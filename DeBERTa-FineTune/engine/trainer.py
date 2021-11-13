@@ -57,7 +57,7 @@ class Trainer:
                 memory_used = max_memory_allocated() / (1024. ** 2)
                 logger.info(
                     f'Train Epoch[{epoch}/{config.TRAIN.EPOCHS}] Step[{i}/{len(dataloader)}]\t'
-                    f'lr: {lr:.6f}\t'
+                    f'lr: {lr:.10f}\t'
                     f'batch time: {batch_time:.4f}s\t'
                     f'loss: {loss.item():.4f}\t'
                     f'grad norm: {grad_norm:.4f}\t'
@@ -68,7 +68,7 @@ class Trainer:
             progress_bar.update()
 
             # TODO: remove this debugging intent
-            break
+            # break
 
         # v. Print epoch time
         epoch_time = time.time() - start
@@ -107,7 +107,7 @@ class Trainer:
                 batch_start = time.time()
         
             epoch_time = time.time() - start
-            logger.info(f"=> Epoch{epoch} validation takes time: {datetime.timedelta(seconds=epoch_time)}\n")
+            logger.info(f"=> Epoch{epoch} validation takes time: {datetime.timedelta(seconds=epoch_time)}\t")
 
         start_logits = torch.cat(start_logits)
         end_logits = torch.cat(end_logits)
@@ -122,10 +122,13 @@ class Trainer:
         val_results = metric.compute(predictions=predictions, references=references)
 
         # Reduce results across all gpus 
-        val_results = {k: torch.Tensor(v).cuda() for k, v in val_results.items()}
+        val_results = {k: torch.tensor(v).cuda() for k, v in val_results.items()}
         reduced_results = all_reduce(val_results)
 
         # Release gpu resources(but not be available to Pytorch)
         torch.cuda.empty_cache()
 
-        return reduced_results['f1'], reduced_results['exact_match']
+        f1, em = reduced_results['f1'], reduced_results['exact_match']
+        logger.info(f"F1: {f1:.2f} EM: {em:.2f}\n")
+
+        return f1, em

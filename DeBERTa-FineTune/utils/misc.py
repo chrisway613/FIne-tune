@@ -64,7 +64,7 @@ def save_checkpoint(checkpoint_dir, model, optimizer, lr_scheduler, epoch, confi
     checkpoint = os.path.join(checkpoint_dir, f'epoch{epoch}.pth')
     torch.save(save_state, checkpoint)
     
-    return checkpoint, f1, em
+    return checkpoint
 
 
 def get_grad_norm(parameters: List[torch.Tensor], norm_type: float = 2.) -> float:

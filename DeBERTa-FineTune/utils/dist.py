@@ -40,7 +40,7 @@ def init_process_group(backend='nccl', init_method='env://', world_size=-1, rank
 
 def all_reduce(tensors_dict: dict):
     reduced = {}
-    for k, v in tensors_dict:
+    for k, v in tensors_dict.items():
         assert isinstance(v, torch.Tensor)
 
         v_ = v.clone()

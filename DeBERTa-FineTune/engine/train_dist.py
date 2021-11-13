@@ -111,31 +111,34 @@ if __name__ == '__main__':
     setup_seed(rank_seed)
     logger.info(f"=> Rank random seed={rank_seed}\n")
 
-    '''v. Get data'''
+    '''v. Data processing'''
     # Load
     data = load_data(config.DATA.DATASET)
     logger.info(f"\n[Dataset]\n{data}\n")
 
     # TODO: delete this debugging
-    train_data = data['train'].select(range(config.DATA.BATCH_SIZE * 6))
-    val_data_raw = data['validation'].select(range(config.DATA.BATCH_SIZE * 4))
+    # train_data = data['train'].select(range(config.DATA.BATCH_SIZE * 4))
+    # val_data_raw = data['validation'].select(range(config.DATA.BATCH_SIZE * 4))
 
     # Tokenize
-    # tokenized_data = data.map(generate_features(), batched=True, remove_columns=data['train'].column_names)
-    # tokenized_train_data, tokenized_val_data = tokenized_data['train'], tokenized_data['validation']
+    tokenized_data = data.map(generate_features(), 
+                              batched=True, remove_columns=data['train'].column_names)
+    tokenized_train_data, tokenized_val_data = tokenized_data['train'], tokenized_data['validation']
 
     # TODO: remove this debugging
-    tokenized_train_data = train_data.map(generate_features(), batched=True, remove_columns=train_data.column_names)
-    tokenized_val_data = val_data_raw.map(generate_features(), batched=True, remove_columns=val_data_raw.column_names)
+    # tokenized_train_data = train_data.map(generate_features(), batched=True, remove_columns=train_data.column_names)
+    # tokenized_val_data = val_data_raw.map(generate_features(), batched=True, remove_columns=val_data_raw.column_names)
     
     # Batch Data
     tokenized_train_data.set_format(config.DATA.DATA_FORMAT)
     train_data = tokenized_train_data.shuffle(rank_seed)
 
     tokenized_val_data.set_format(config.DATA.DATA_FORMAT)
-    val_data = tokenized_val_data.shuffle(rank_seed)
+    # Validation set do not need to be shuffled
+    val_data = tokenized_val_data
 
     train_dist_sampler = DistributedSampler(train_data)
+    # Note: please explicitly set 'shuffle=False' cuz default is 'shuffle=True'
     val_dist_sampler = DistributedSampler(val_data, shuffle=False)
 
     train_dataloader = DataLoader(train_data, batch_size=config.DATA.BATCH_SIZE, sampler=train_dist_sampler,
@@ -143,20 +146,23 @@ if __name__ == '__main__':
     val_dataloader = DataLoader(val_data, batch_size=config.DATA.BATCH_SIZE, sampler=val_dist_sampler,
                                 num_workers=config.DATA.NUM_WORKERS, pin_memory=config.DATA.PIN_MEMORY)
 
-    logger.info(f"=> Total {len(train_dataloader)}batch of {len(train_data) // get_world_size()} train samples")
-    logger.info(f"=> Total {len(val_dataloader)}batch of {len(val_data) // get_world_size()} val samples\n")
+    logger.info(f"=> Total {len(train_dataloader)} batch of {len(train_data) // get_world_size()} train samples")
+    logger.info(f"=> Total {len(val_dataloader)} batch of {len(val_data) // get_world_size()} val samples\n")
 
     # Generate features for evaluation
-    # val_features = data['validation'].map(
-    #     generate_features(mode='val'),
-    #     batched=True, remove_columns=data['validation'].column_names
-    # )
-    # TODO: remove this debugging intent
-    rank_val_data_raw = val_data_raw.select(range(config.LOCAL_RANK, len(val_data_raw), get_world_size()))
+    # Get each rank's subset of data
+    rank_val_data_raw = data['validation'].select(
+        range(config.LOCAL_RANK, len(data['validation']), get_world_size()))
     val_features = rank_val_data_raw.map(
         generate_features(mode='val'),
         batched=True, remove_columns=rank_val_data_raw.column_names
     )
+    # TODO: remove this debugging intent
+    # rank_val_data_raw = val_data_raw.select(range(config.LOCAL_RANK, len(val_data_raw), get_world_size()))
+    # val_features = rank_val_data_raw.map(
+    #     generate_features(mode='val'),
+    #     batched=True, remove_columns=rank_val_data_raw.column_names
+    # )
     val_features.set_format(type=val_features.format['type'],
                             columns=list(val_features.features.keys()))
 
@@ -233,35 +239,31 @@ if __name__ == '__main__':
 
         if is_master() and (not epoch % config.SAVE_FREQ or epoch == config.TRAIN.EPOCHS - 1):
             checkpoint_dir = os.path.join(config.OUTPUT, f'{config.MODEL.NAME}-{config.TAG}')
-            checkpoint, _, _ = save_checkpoint(
+            checkpoint = save_checkpoint(
                 checkpoint_dir, model_wo_ddp, optimizer, lr_scheduler, epoch, config,
                 best_f1, best_em
             )
-            logger.info(f"=> checkpoint '{checkpoint}' saved")
+            logger.info(f"=> checkpoint '{checkpoint}' saved\n")
         
-        # f1, em = Trainer.val(model, val_dataloader, data['validation'],
-        #                      val_features, config, logger, epoch)
-        # TODO：remove this debugging intent
         f1, em = Trainer.val(model, val_dataloader, rank_val_data_raw,
                              val_features, config, logger, epoch)
-        if f1 > best_f1 or em > best_em:
-            if em > best_em:
-                best_em = em
-                logger.info(f"=> Gain best EM: {em:.5f}\n")
+        if em > best_em:
+            best_em = em
+            logger.info(f"=> Gain best EM: {em:.2f}")
+        if f1 > best_f1:
+            best_f1 = f1
+            logger.info(f"=> Gain best F1: {f1:.2f}")
 
-            if f1 > best_f1:
-                best_f1 = f1
-                logger.info(f"=> Gain best F1: {f1:.5f}")
-
-                best_checkpoint, _, _ = save_checkpoint(
-                    best_checkpoint_dir, model_wo_ddp, optimizer, lr_scheduler, epoch, config,
-                    best_f1, best_em
-                )
-                logger.info(f"=> best checkpoint '{best_checkpoint}' saved")
+        if f1 + em > best_f1 + best_em:
+            best_checkpoint = save_checkpoint(
+                best_checkpoint_dir, model_wo_ddp, optimizer, lr_scheduler, 
+                epoch, config, best_f1, best_em
+            )
+            logger.info(f"=> best checkpoint '{best_checkpoint}' saved\n")
 
         # TODO: remove this debugging intent
-        break
+        # break
 
     total = time.time() - begin
     total_str = str(datetime.timedelta(seconds=total))
-    logger.info(f"=> Training time: {total_str}\n")
+    logger.info(f"=> Training finished! time used: {total_str}\n")
