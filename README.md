@@ -1,2 +1,2 @@
-# FIne-tune
+# Fine-tune
 Pretrained Model Fine-tuning
