@@ -29,7 +29,7 @@ _C.DATA.DATASET = 'squad'
 # Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.
 _C.DATA.PIN_MEMORY = True
 # Number of data loading threads
-_C.DATA.NUM_WORKERS = 8
+_C.DATA.NUM_WORKERS = 4
 # Input sequence maximum length
 _C.DATA.MAX_SEQ_LENGTH = 384
 # Maximum answer length

@@ -68,7 +68,7 @@ class Trainer:
             progress_bar.update()
 
             # TODO: remove this debugging intent
-            # break
+            break
 
         # v. Print epoch time
         epoch_time = time.time() - start
@@ -121,14 +121,16 @@ class Trainer:
         metric = load_metric(config.DATA.DATASET)
         val_results = metric.compute(predictions=predictions, references=references)
 
-        # Reduce results across all gpus 
-        val_results = {k: torch.tensor(v).cuda() for k, v in val_results.items()}
-        reduced_results = all_reduce(val_results)
+        if torch.cuda.is_available() and torch.cuda.device_count() > 1:
+            # Reduce results across all gpus 
+            val_results_ts = {k: torch.tensor(v).cuda() for k, v in val_results.items()}
+            reduced_results = all_reduce(val_results_ts)
+            val_results = reduced_results
 
         # Release gpu resources(but not be available to Pytorch)
         torch.cuda.empty_cache()
 
-        f1, em = reduced_results['f1'], reduced_results['exact_match']
+        f1, em = val_results['f1'], val_results['exact_match']
         logger.info(f"F1: {f1:.2f} EM: {em:.2f}\n")
 
         return f1, em

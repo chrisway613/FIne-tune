@@ -1,5 +1,5 @@
 # --------------------------------------------------------
-# [Distributed Training]
+# [Distributed Training Pipeline]
 # Copyright (c) 2021 Moffett.AI
 # Licensed under Moffett.AI
 # Written by CW
