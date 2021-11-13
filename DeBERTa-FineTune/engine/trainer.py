@@ -22,14 +22,14 @@ from data.process import postprocess_predictions
 
 class Trainer:
     @staticmethod
-    def train(model, dataloader, optimizer, lr_scheduler, config, logger, epoch, progress_bar):
+    def train(model, dataloader, optimizer, lr_scheduler, config, logger, epoch, progress_bar, device):
         model.train()
 
         # i. Loop over batches
         start = batch_start = time.time()
         for i, batch in enumerate(dataloader):
             # Put the data into proper device
-            batch = {k: v.cuda(non_blocking=True) for k, v in batch.items()}
+            batch = {k: v.to(device) for k, v in batch.items()}
             # ii. Model forward
             outputs = model(**batch)
 
@@ -78,7 +78,7 @@ class Trainer:
         torch.cuda.empty_cache()
         
     @staticmethod
-    def val(model, dataloader, val_data, val_features, config, logger, epoch):
+    def val(model, dataloader, val_data, val_features, config, logger, epoch, device):
         model.eval()
         
         with torch.no_grad():
@@ -86,7 +86,7 @@ class Trainer:
             start_logits, end_logits = [], []
 
             for i, batch in enumerate(dataloader):
-                batch = {k: v.cuda() for k, v in batch.items()}
+                batch = {k: v.to(device) for k, v in batch.items()}
                 outputs = model(**batch)
                 
                 loss = outputs.loss

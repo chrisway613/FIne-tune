@@ -235,7 +235,7 @@ if __name__ == '__main__':
         # Make each epoch shuffle
         train_dataloader.sampler.set_epoch(epoch)
         Trainer.train(model, train_dataloader, optimizer, lr_scheduler, 
-                      config, logger, epoch, progress_bar)
+                      config, logger, epoch, progress_bar, device)
 
         if is_master() and (not epoch % config.SAVE_FREQ or epoch == config.TRAIN.EPOCHS - 1):
             checkpoint_dir = os.path.join(config.OUTPUT, f'{config.MODEL.NAME}-{config.TAG}')
@@ -246,7 +246,7 @@ if __name__ == '__main__':
             logger.info(f"=> checkpoint '{checkpoint}' saved\n")
         
         f1, em = Trainer.val(model, val_dataloader, rank_val_data_raw,
-                             val_features, config, logger, epoch)
+                             val_features, config, logger, epoch, device)
         if em > best_em:
             best_em = em
             logger.info(f"=> Gain best EM: {em:.2f}")

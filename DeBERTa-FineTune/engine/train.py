@@ -5,6 +5,11 @@
 # Written by CW
 # --------------------------------------------------------
 
+"""
+    TOKENIZERS_PARALLELISM=true CUDA_VISIBLE_DEVICES=0 python train_dist.py \
+        --arg1 .. --arg2 ..
+"""
+
 import time
 import torch
 import datetime
@@ -128,6 +133,7 @@ if __name__ == '__main__':
     '''v. Build model'''
     model = AutoModelForQuestionAnswering.from_pretrained(config.MODEL.TYPE)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"=> Device: {device}")
     model.to(device)
 
     logger.info(f"=> Build model '{config.MODEL.NAME} from pretrained '{config.MODEL.TYPE}'")
@@ -191,7 +197,7 @@ if __name__ == '__main__':
     begin = time.time()
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
         Trainer.train(model, train_dataloader, optimizer, lr_scheduler, 
-                      config, logger, epoch, progress_bar)
+                      config, logger, epoch, progress_bar, device)
 
         if not epoch % config.SAVE_FREQ or epoch == config.TRAIN.EPOCHS - 1:
             checkpoint_dir = os.path.join(config.OUTPUT, f'{config.MODEL.NAME}-{config.TAG}')
@@ -205,7 +211,7 @@ if __name__ == '__main__':
         #                      val_features, config, logger, epoch)
         # TODO: remove this debugging intent
         f1, em = Trainer.val(model, val_dataloader, val_data_raw,
-                             val_features, config, logger, epoch)
+                             val_features, config, logger, epoch, device)
         if em > best_em:
             best_em = em
             logger.info(f"=> Gain best EM: {em:.2f}")
