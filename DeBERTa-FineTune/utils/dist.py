@@ -18,6 +18,10 @@ def is_master():
     return get_rank() == 0
 
 
+def kill_all_process():
+    dist.destroy_process_group()
+
+
 def synchronize():
     """
     Helper function to synchronize (barrier) among all processes when using distributed training.

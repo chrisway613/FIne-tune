@@ -34,32 +34,36 @@ def load_checkpoint(model, optimizer, lr_scheduler, config, logger):
         config.freeze()
         logger.info(f"=> Resume from epoch{checkpoint['epoch']}")
     
-    f1 = em = 0.
-    if 'f1' in checkpoint:
-        f1 = checkpoint['max_accuracy']
-    if 'em' in checkpoint:
-        em = checkpoint['em']
-
+    metrics = checkpoint.get('metric', {})
     del checkpoint
+    
     torch.cuda.empty_cache()
 
-    return f1, em
+    return metrics
 
 
-def save_checkpoint(checkpoint_dir, model, optimizer, lr_scheduler, epoch, config, f1, em):
+def save_checkpoint(checkpoint_dir, model, optimizer, lr_scheduler, 
+                    epoch, config, results, tokenizer=None, accelerator=None):
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     epoch_dir = os.path.join(checkpoint_dir, f'epoch{epoch}')
     os.makedirs(epoch_dir, exist_ok=True)
+    
     # Done by Transformers API, this will save 'config.json' & 'pytorch_model.bin' below directory
-    model.save_pretrained(epoch_dir)
+    if accelerator is None:
+        model.save_pretrained(epoch_dir)
+    else:
+        model.save_pretrained(epoch_dir, save_function=accelerator.save)
+
+    if tokenizer is not None:
+        tokenizer.save_pretrained(epoch_dir)
 
     save_state = {'model': model.state_dict(),
                   'optimizer': optimizer.state_dict(),
                   'lr_scheduler': lr_scheduler.state_dict(),
                   'epoch': epoch,
                   'config': config,
-                  'f1': f1, 'em': em}
+                  'metric': results}
 
     checkpoint = os.path.join(checkpoint_dir, f'epoch{epoch}.pth')
     torch.save(save_state, checkpoint)

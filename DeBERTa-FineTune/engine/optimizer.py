@@ -8,16 +8,16 @@ def set_weight_decay(model, skip=()):
         if not param.requires_grad:
             continue
             
-        if name in skip or name.endswith('.bias'):
+        if any(nd in name for nd in skip):
             no_decay.append(param)
         else:
             decay.append(param)
     
-    return [{'params': decay}, {'params': no_decay, 'weight_decay': 0.}]
+    return [{'params': decay}, {'params': no_decay, 'weight_decay': 0}]
 
 
 def build_optimizer(model, config):
-    no_decay = model.no_decay() if hasattr(model, 'no_decay') else {}
+    no_decay = model.no_decay() if hasattr(model, 'no_decay') else config.MODEL.NO_DECAY_KEYWORDS
     # Parameters distinguish decay & no-decay
     params = set_weight_decay(model, skip=no_decay)
 

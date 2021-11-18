@@ -17,7 +17,7 @@ from torch.nn.utils.clip_grad import clip_grad_norm_
 from utils.misc import get_grad_norm
 from utils.dist import synchronize, all_reduce
 
-from data.process import postprocess_predictions
+from data.squad.process import postprocess_predictions
 
 
 class Trainer:
@@ -35,7 +35,7 @@ class Trainer:
 
             # iii. Compute loss & grad norm, backward, update parameters & lr
             loss = outputs.loss
-            loss /= config.TRAIN.ACCUMULATION_STEPS
+            loss /= config.TRAIN.GRADIENT_ACCUMULATION_STEPS
             loss.backward()
 
             if config.TRAIN.CLIP_GRAD:
@@ -43,7 +43,7 @@ class Trainer:
             else:
                 grad_norm = get_grad_norm(model.parameters())
 
-            if not (i + 1) % config.TRAIN.ACCUMULATION_STEPS:
+            if not (i + 1) % config.TRAIN.GRADIENT_ACCUMULATION_STEPS or i == len(dataloader) - 1:
                 optimizer.step()
                 optimizer.zero_grad()
                 lr_scheduler.step()
@@ -78,7 +78,7 @@ class Trainer:
         torch.cuda.empty_cache()
         
     @staticmethod
-    def val(model, dataloader, val_data, val_features, config, logger, epoch, device):
+    def val(model, dataloader, val_data, val_features, metric_computor, config, logger, epoch, device):
         model.eval()
         
         with torch.no_grad():
@@ -118,8 +118,7 @@ class Trainer:
         references = [{'id': example['id'], 'answers': example['answers']} for example in val_data]
         
         # Comput F1 & Exact Match
-        metric = load_metric(config.DATA.DATASET)
-        val_results = metric.compute(predictions=predictions, references=references)
+        val_results = metric_computor.compute(predictions=predictions, references=references)
 
         if torch.cuda.is_available() and torch.cuda.device_count() > 1:
             # Reduce results across all gpus 

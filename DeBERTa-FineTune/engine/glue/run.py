@@ -20,14 +20,13 @@ import time
 import random
 import argparse
 import datetime
-from torch.nn.modules import loss
 
 from tqdm import tqdm
 
 from torch.optim import optimizer
 from torch.utils.data import DataLoader
 
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
 from transformers import (
     AutoConfig,
     AutoTokenizer,
@@ -36,7 +35,6 @@ from transformers import (
     default_data_collator,
     DataCollatorWithPadding,
 )
-from transformers.utils.dummy_pt_objects import DebertaForQuestionAnswering, DebertaForSequenceClassification
 from transformers.utils.versions import require_version
 
 require_version("datasets>=1.8.0", 
@@ -48,8 +46,10 @@ BASE_DIR = os.path.dirname(__file__)
 sys.path.append(os.path.join(BASE_DIR, '..'))
 sys.path.append(os.path.join(BASE_DIR, '..', '..'))
 
+
 from utils.logger import Logger
 from utils.seed import setup_seed
+from utils.dist import kill_all_process
 from utils.misc import auto_resume_helper, load_checkpoint, save_checkpoint
 
 from optimizer import build_optimizer
@@ -467,4 +467,7 @@ if __name__ == '__main__':
                     logger, cfg.TRAIN.EPOCHS, metric_computor, False)
 
     logger.info("Success")
+
     accelerator.free_memory()
+    if accelerator.distributed_type == DistributedType.MULTI_GPU:
+        kill_all_process()
