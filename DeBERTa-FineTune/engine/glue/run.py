@@ -275,7 +275,7 @@ if __name__ == '__main__':
         label_list, is_regression, logger, cfg, accelerator
     )
     used = time.time() - s
-    logger.info(f"=> process data takes time:{datetime.timedelta(used)}\n")
+    logger.info(f"=> process data takes time:{datetime.timedelta(seconds=used)}\n")
     # TODO: use 'select' for debugging
     train_data = processed_data['train'].select(range(8))
     val_data = processed_data['validation_matched' \
