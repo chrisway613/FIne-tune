@@ -12,8 +12,9 @@
     ii.  Reply the questions in order to setup your configuration
     iii. Run this script like:
     accelerate launch run.py --task_name [TASK_NAME] --model_type [MODEL_NAME] \
-        --output_dir [OUTPUT_DIR] --train_batch_size [] --val_batch_size [] \
-        --pad_to_max_seq_length --linear_scaled_lr --weight_decay [] --pruning --kd_on..
+        --output_dir [OUTPUT_DIR] --train_batch_size [TRAIN_BATCH_SIZE] --val_batch_size [VAL_BATCH_SIZE] \
+        --pad_to_max_seq_length --linear_scaled_lr --weight_decay [WEIGHT_DECAY] --pruning \
+        --prune_frequency [PRUNE_FREQUENCY] --kd_on..
 """
 
 import os
