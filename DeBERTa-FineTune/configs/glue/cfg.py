@@ -47,7 +47,7 @@ _C.DATA.PAD_TO_MAX_SEQ_LENGTH = False
 # -----------------------------------------------------------------------------
 _C.MODEL = CN()
 # Model type
-_C.MODEL.TYPE = 'microsoft/deberta-large-mnli'
+_C.MODEL.TYPE = 'microsoft/deberta-large'
 # Model name
 _C.MODEL.NAME = 'DeBERTa-large'
 # Checkpoint to resume, could be overwritten by command line argument
@@ -198,7 +198,7 @@ def update_config_by_args(config: CN, args):
         config.MODEL.TYPE = args.model_type
     if args.use_slow_tokenizer:
         config.USE_SLOW_TOKENIZER = args.use_slow_tokenizer
-    if args.weight_decay:
+    if args.weight_decay is not None:
         config.TRAIN.WEIGHT_DECAY = args.weight_decay
 
     if args.lr:

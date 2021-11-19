@@ -2,7 +2,9 @@ from transformers import PretrainedConfig
 from configs.glue.cfg import TASK_TO_KEYS
 
 
-def preprocess_data(data, model, tokenizer, auto_config, num_labels, label_list, 
+# def preprocess_data(data, model, tokenizer, auto_config, num_labels, label_list, 
+#                     is_regression, logger, cfg, accelerator):
+def preprocess_data(data, model, tokenizer, num_labels, label_list, 
                     is_regression, logger, cfg, accelerator):
     # Preprocessing the datasets
     if cfg.DATA.TASK_NAME is not None:
@@ -29,15 +31,15 @@ def preprocess_data(data, model, tokenizer, auto_config, num_labels, label_list,
         label_name_to_id = {k.lower(): v for k, v in model.config.label2id.items()}
         if list(sorted(label_name_to_id.keys())) == list(sorted(label_list)):
             logger.info(
-                f"The configuration of the model provided the following label correspondence: {label_name_to_id}. "
-                "Using it!"
+                f"\nThe configuration of the model provided the following label correspondence: {label_name_to_id}. "
+                "Using it!\n"
             )
             label_to_id = {i: label_name_to_id[label_list[i]] for i in range(num_labels)}
         else:
             logger.warning(
-                "Your model seems to have been trained with labels, but they don't match the dataset: ",
+                f"\nYour model seems to have been trained with labels, but they don't match the dataset. "
                 f"model labels: {list(sorted(label_name_to_id.keys()))}, dataset labels: {list(sorted(label_list))}."
-                "\nIgnoring the model labels as a result.",
+                f"\nIgnoring the model labels as a result.\n"
             )
     elif cfg.DATA.TASK_NAME is None:
         label_to_id = {v: i for i, v in enumerate(label_list)}
@@ -46,10 +48,16 @@ def preprocess_data(data, model, tokenizer, auto_config, num_labels, label_list,
 
     if label_to_id is not None:
         model.config.label2id = label_to_id
-        model.config.id2label = {id: label for label, id in auto_config.label2id.items()}
+        model.config.id2label = {i: label for label, i in label_to_id.items()}
+        # model.config.id2label = {id: label for label, id in auto_config.label2id.items()}
     elif cfg.DATA.TASK_NAME is not None and not is_regression:
         model.config.label2id = {l: i for i, l in enumerate(label_list)}
-        model.config.id2label = {id: label for label, id in auto_config.label2id.items()}
+        model.config.id2label = {i: l for i, l in enumerate(label_list)}
+        # model.config.id2label = {id: label for label, id in auto_config.label2id.items()}
+
+    # TODO: comment this to cancel debug
+    logger.info(f"\n=> 'model.config.label2id': {model.config.label2id}\n"
+                f"=> 'model.config.id2label': {model.config.id2label}\n")
 
     def generate_features(examples):
         # Tokenize the texts

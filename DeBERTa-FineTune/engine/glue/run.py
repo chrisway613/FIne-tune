@@ -12,7 +12,8 @@
     ii.  Reply the questions in order to setup your configuration
     iii. Run this script like:
     accelerate launch run.py --task_name [TASK_NAME] --model_type [MODEL_NAME] \
-        --output_dir [OUTPUT_DIR] --pad_to_max_seq_length --linear_scaled_lr --pruning ..
+        --output_dir [OUTPUT_DIR] --train_batch_size [] --val_batch_size [] \
+        --pad_to_max_seq_length --linear_scaled_lr --weight_decay [] --pruning --kd_on..
 """
 
 import os
@@ -20,6 +21,7 @@ import time
 import random
 import argparse
 import datetime
+import torch.nn as nn
 
 from tqdm import tqdm
 
@@ -136,7 +138,7 @@ def parse_args():
         help="The scheduler type to use.",
         choices=["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"],
     )
-    parser.add_argument("--weight_decay", type=float, help="Weight decay to use.")
+    parser.add_argument("--weight_decay", type=float, default=None, help="Weight decay to use.")
     
     parser.add_argument("--epochs", type=int, help="Total number of training epochs to perform.")
     parser.add_argument(
@@ -232,14 +234,22 @@ if __name__ == '__main__':
     # In distributed training, the 'from_pretrained' methods guarantee that 
     # only one local process can concurrently download model & vocab.
     s = time.time()
-    auto_config = AutoConfig.from_pretrained(cfg.MODEL.TYPE, 
-                                             num_labels=num_labels, finetuning_task=cfg.DATA.TASK_NAME)
+    # auto_config = AutoConfig.from_pretrained(cfg.MODEL.TYPE, 
+    #                                          num_labels=num_labels, finetuning_task=cfg.DATA.TASK_NAME)
     tokenizer = AutoTokenizer.from_pretrained(cfg.MODEL.TYPE, use_fast=not cfg.USE_SLOW_TOKENIZER)
     model = AutoModelForSequenceClassification.from_pretrained(
         cfg.MODEL.TYPE,
-        config=auto_config
+        # TODO: may occure error when use another one down-stream task pretrained weight
+        # config=auto_config
     )
     used = time.time() - s
+
+    if not is_regression and getattr(model, 'classifier') and \
+        model.classifier.out_features != num_labels:
+        logger.warning(f"\n=> model classifier does not match the dataset category. "
+                       f"model output features:{model.classifier.out_features}, dataset number of labels: {num_labels}\n")
+        in_features, bias = model.classifier.in_features, model.classifier.bias
+        model.classifier = nn.Linear(in_features, num_labels, bias=bias is not None)
 
     logger.info(f"=> Build model '{cfg.MODEL.NAME} from pretrained '{cfg.MODEL.TYPE}'")
     logger.info(f"{str(model)}\n")
@@ -256,7 +266,8 @@ if __name__ == '__main__':
     if cfg.TRAIN.KD.ON:
         teacher = AutoModelForSequenceClassification.from_pretrained(
             cfg.MODEL.TYPE,
-            config=auto_config
+            # TODO: may occure error when use another one down-stream task pretrained weight
+            # config=auto_config
         )
         # Pay attention to set the teacher to eval model
         teacher.eval()
@@ -264,14 +275,19 @@ if __name__ == '__main__':
         kd_logit_loss = loss_dict.get(cfg.TRAIN.KD.CLS_LOSS)
         kd_layer_loss = loss_dict.get(cfg.TRAIN.KD.REG_LOSS)
 
+        # TODO: how to output the name of a variable
         logger.info(f"\nKD mode: ON\nTeacher model: {teacher.__class__.__name__}\n"
-                    f"Output logit loss: {kd_logit_loss.__class__.__name__}\n"
-                    f"Transformer layer loss: {kd_layer_loss.__class__.__name__}\n")
+                    f"Output logit loss: {kd_logit_loss.__name__}\n"
+                    f"Transformer layer loss: {kd_layer_loss.__name__}\n")
 
     '''vii. Preprocess dataset then feed in dataloader'''
     s = time.time()
+    # processed_data = preprocess_data(
+    #     data, model, tokenizer, auto_config, num_labels, 
+    #     label_list, is_regression, logger, cfg, accelerator
+    # )
     processed_data = preprocess_data(
-        data, model, tokenizer, auto_config, num_labels, 
+        data, model, tokenizer, num_labels, 
         label_list, is_regression, logger, cfg, accelerator
     )
     used = time.time() - s
