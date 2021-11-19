@@ -62,7 +62,6 @@ from trainer_accelerate import Trainer
 from configs.glue.cfg import get_config, TASK_TO_KEYS
 
 from pruner import Prune
-# from pruner_old import Prune
 from loss import loss_dict
 
 
@@ -223,23 +222,28 @@ if __name__ == '__main__':
     accelerator.wait_for_everyone()
 
     '''v. Load dataset'''
+    s = time.time()
     data, label_list, num_labels, is_regression, metric_computor = \
         load_data(task_name=cfg.DATA.TASK_NAME)
-    logger.info(f"\n[Dataset]\n{data}\n")
+    used = time.time() - s
+    logger.info(f"\n[Dataset]\n{data}\nload data takes time:{datetime.timedelta(seconds=used)}\n")
 
     '''vi. Build model and tokenizer'''
     # In distributed training, the 'from_pretrained' methods guarantee that 
     # only one local process can concurrently download model & vocab.
+    s = time.time()
     auto_config = AutoConfig.from_pretrained(cfg.MODEL.TYPE, 
                                              num_labels=num_labels, finetuning_task=cfg.DATA.TASK_NAME)
     tokenizer = AutoTokenizer.from_pretrained(cfg.MODEL.TYPE, use_fast=not cfg.USE_SLOW_TOKENIZER)
     model = AutoModelForSequenceClassification.from_pretrained(
         cfg.MODEL.TYPE,
-        config=auto_config,
+        config=auto_config
     )
+    used = time.time() - s
 
     logger.info(f"=> Build model '{cfg.MODEL.NAME} from pretrained '{cfg.MODEL.TYPE}'")
     logger.info(f"{str(model)}\n")
+    logger.info(f"=> load model(w tokenizer) takes time: {datetime.timedelta(seconds=used)}\n")
 
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"=> number of model params: {n_parameters}")
@@ -248,7 +252,7 @@ if __name__ == '__main__':
         flops = model.flops()
         logger.info(f"=> number of FLOPs: {flops / 1e9}G\n")
     
-    teacher = kd_cls_loss = kd_reg_loss = None
+    teacher = kd_logit_loss = kd_layer_loss = None
     if cfg.TRAIN.KD.ON:
         teacher = AutoModelForSequenceClassification.from_pretrained(
             cfg.MODEL.TYPE,
@@ -265,14 +269,17 @@ if __name__ == '__main__':
                     f"Transformer layer loss: {kd_layer_loss.__class__.__name__}\n")
 
     '''vii. Preprocess dataset then feed in dataloader'''
+    s = time.time()
     processed_data = preprocess_data(
         data, model, tokenizer, auto_config, num_labels, 
         label_list, is_regression, logger, cfg, accelerator
     )
+    used = time.time() - s
+    logger.info(f"=> process data takes time:{datetime.timedelta(used)}\n")
     # TODO: use 'select' for debugging
-    train_data = processed_data['train']
+    train_data = processed_data['train'].select(range(8))
     val_data = processed_data['validation_matched' \
-        if cfg.DATA.TASK_NAME == 'mnli' else 'validation']
+        if cfg.DATA.TASK_NAME == 'mnli' else 'validation'].select(range(8))
 
     # Log a few random samples from the training set:
     for index in random.sample(range(len(train_data)), 2):
@@ -289,6 +296,7 @@ if __name__ == '__main__':
         # of 8s, which will enable the use of Tensor Cores on NVIDIA hardware with compute capability >= 7.5 (Volta).
         data_collator = DataCollatorWithPadding(tokenizer, pad_to_multiple_of=(8 if accelerator.use_fp16 else None))
 
+    s = time.time()
     train_dataloader = DataLoader(
         train_data, batch_size=cfg.DATA.TRAIN_BATCH_SIZE,
         shuffle=True, num_workers=cfg.DATA.NUM_WORKERS,
@@ -298,6 +306,8 @@ if __name__ == '__main__':
         val_data, batch_size=cfg.DATA.VAL_BATCH_SIZE, 
         num_workers=cfg.DATA.NUM_WORKERS, pin_memory=cfg.DATA.PIN_MEMORY, collate_fn=data_collator
     )
+    used = time.time() - s
+    logger.info(f"=> dataloader takes time:{datetime.timedelta(used)}\n")
 
     '''viii. Build optimizer & lr_scheduler'''
     # Linear scale the learning rate according to total batch size
@@ -446,7 +456,7 @@ if __name__ == '__main__':
             pass
 
         # TODO: comment this debugging intent
-        # break
+        break
 
     total = time.time() - begin
     total_str = str(datetime.timedelta(seconds=total))
@@ -466,8 +476,11 @@ if __name__ == '__main__':
         Trainer.val(accelerator, model, eval_dataloader, cfg, 
                     logger, cfg.TRAIN.EPOCHS, metric_computor, False)
 
+    # Note: this is for EF scheduler, it is required
     logger.info("Success")
 
+    # Release all references to the internal objects stored and call the garbage collector
     accelerator.free_memory()
     if accelerator.distributed_type == DistributedType.MULTI_GPU:
+        # Destroy all processes, and deinitialize the distributed package
         kill_all_process()

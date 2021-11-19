@@ -23,6 +23,7 @@ _C.DATA = CN()
 _C.DATA.DATASET = 'glue'
 # ["cola", "mnli", "mrpc", "qnli", "qqp", "rte", "sst2", "stsb", "wnli"]
 _C.DATA.TASK_NAME = None
+_C.DATA.LOAD_FROM_CACHE = False
 # csv or json
 _C.DATA.TRAIN_FILE = ''
 # csv or json
@@ -95,7 +96,7 @@ _C.TRAIN.KD = CN()
 # Whether to use kd
 _C.TRAIN.KD.ON = False
 # Decide from which Transformer layer we will kd
-_C.TRAIN.KD.BEGIN_LAYER = -2
+_C.TRAIN.KD.BEGIN_LAYER = -4
 # Kd for logit loss
 _C.TRAIN.KD.CLS_LOSS = None
 # Kd for Transformer layer loss
@@ -261,10 +262,10 @@ def update_config_by_args(config: CN, args):
     
     if args.kd_on:
         config.TRAIN.KD.ON = args.kd_on
-    if args.kd_cls_loss:
-        config.TRAIN.KD.CLS_LOSS = args.kd_cls_loss
-    if args.kd_reg_loss:
-        config.TRAIN.KD.REG_LOSS = args.kd_reg_loss
+        if args.kd_cls_loss:
+            config.TRAIN.KD.CLS_LOSS = args.kd_cls_loss
+        if args.kd_reg_loss:
+            config.TRAIN.KD.REG_LOSS = args.kd_reg_loss
 
     config.freeze()
 
