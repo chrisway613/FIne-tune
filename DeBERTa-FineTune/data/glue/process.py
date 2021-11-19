@@ -41,6 +41,8 @@ def preprocess_data(data, model, tokenizer, auto_config, num_labels, label_list,
             )
     elif cfg.DATA.TASK_NAME is None:
         label_to_id = {v: i for i, v in enumerate(label_list)}
+    else:
+        pass
 
     if label_to_id is not None:
         model.config.label2id = label_to_id
@@ -59,7 +61,13 @@ def preprocess_data(data, model, tokenizer, auto_config, num_labels, label_list,
         if "label" in examples:
             if label_to_id is not None:
                 # Map labels to IDs (not necessary for GLUE tasks)
-                result["labels"] = [label_to_id[l] for l in examples["label"]]
+                # This situation may occur: some value in 'examples["label"]' does not existed in 'label_to_id',
+                # etc. for MNLI testing set, all of examples["label"] is -1
+                result["labels"] = [label_to_id.get(l) for l in examples["label"]]
+                for i, label in enumerate(result["labels"]):
+                    if label is None:
+                        logger.warning(f"=> label {examples['label'][i]} of example{i} "
+                                       f"does not in range(0, {num_labels}), please pay attention!")
             else:
                 # In all cases, rename the column to labels because the model will expect that.
                 result["labels"] = examples["label"]
@@ -72,6 +80,7 @@ def preprocess_data(data, model, tokenizer, auto_config, num_labels, label_list,
             batched=True,
             remove_columns=data["train"].column_names,
             desc="Running tokenizer on dataset",
+            load_from_cache_file=cfg.DATA.LOAD_FROM_CACHE
         )
     
     return features
