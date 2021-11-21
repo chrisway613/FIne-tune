@@ -108,11 +108,11 @@ class Trainer:
                     f'memory used: {memory_used:.0f}MB\n'
                 )
             
-            batch_time = time.time()
-            
             del loss
             if teacher is not None:
                 del logit_loss, hs_loss, attn_loss
+            
+            batch_start = time.time()
         
         epoch_time = time.time() - start
         logger.info(f"=> Epoch{epoch} training takes time: {datetime.timedelta(seconds=epoch_time)}\n")

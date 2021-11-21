@@ -32,13 +32,13 @@ _C.DATA.VAL_FILE = ''
 _C.DATA.TRAIN_BATCH_SIZE = 16
 _C.DATA.VAL_BATCH_SIZE = 16
 # Official total batch size(per device x num devices per node)
-_C.DATA.BASE_BATCH_SIZE = 64 * 8
+_C.DATA.BASE_BATCH_SIZE = 32 * 8
 # Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.
 _C.DATA.PIN_MEMORY = True
 # Number of data loading threads
 _C.DATA.NUM_WORKERS = 8
 # Input sequence maximum length
-_C.DATA.MAX_SEQ_LENGTH = 256
+_C.DATA.MAX_SEQ_LENGTH = 512
 # Pad all samples to a specific length. Otherwise, dynamic padding is used
 _C.DATA.PAD_TO_MAX_SEQ_LENGTH = False
 
@@ -58,9 +58,9 @@ _C.MODEL.NO_DECAY_KEYWORDS = ("LayerNorm.weight", "bias")
 # Training settings
 # -----------------------------------------------------------------------------
 _C.TRAIN = CN()
-_C.TRAIN.EPOCHS = 3
+_C.TRAIN.EPOCHS = 4
 _C.TRAIN.START_EPOCH = 0
-_C.TRAIN.WARMUP_STEPS = 1000
+_C.TRAIN.WARMUP_STEPS = 500
 _C.TRAIN.WEIGHT_DECAY = 1e-2
 
 _C.TRAIN.LR = 1e-5
