@@ -68,6 +68,9 @@ class Trainer:
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
+                # Default update step is 1
+                progress_bar.update()
+
                 if pruner is not None:
                     # This is for old pruner
                     # pruner.prune()
@@ -81,12 +84,9 @@ class Trainer:
                         layer_sparse_rate, total_sparse_rate = pruner.sparsity()
                         logger.info(f'\nweight sparsity: {total_sparse_rate}\n'
                                     f'layer weight sparsity:\n{layer_sparse_rate}\n')
-
-                # Default update step is 1
-                progress_bar.update()
             
-            # This is the max batch time overall processes
-            accelerator.wait_for_everyone()
+            # If un-comment below, it is the max batch time overall processes
+            # accelerator.wait_for_everyone()
             batch_time = time.time() - batch_start
 
             if not step % config.PRINT_FREQ:
@@ -108,16 +108,15 @@ class Trainer:
                     f'memory used: {memory_used:.0f}MB\n'
                 )
             
-            batch_time = time.time()
-            
             del loss
             if teacher is not None:
                 del logit_loss, hs_loss, attn_loss
+            
+            batch_start = time.time()
         
         epoch_time = time.time() - start
         logger.info(f"=> Epoch{epoch} training takes time: {datetime.timedelta(seconds=epoch_time)}\n")
 
-        accelerator.wait_for_everyone()
         torch.cuda.empty_cache()
 
     @classmethod
@@ -139,7 +138,8 @@ class Trainer:
                     references=accelerator.gather(batch["labels"]),
                 )
 
-            accelerator.wait_for_everyone()
+            # If un-comment below, it is the max batch time overall processes
+            # accelerator.wait_for_everyone()
             batch_time = time.time() - batch_start
 
             if not step % config.PRINT_FREQ:
@@ -158,7 +158,6 @@ class Trainer:
         logger.info(f"=> Epoch{epoch} metric: {val_results} \
             validation takes time: {datetime.timedelta(seconds=epoch_time)}\t")
 
-        accelerator.wait_for_everyone()
         torch.cuda.empty_cache()
         
         return val_results
