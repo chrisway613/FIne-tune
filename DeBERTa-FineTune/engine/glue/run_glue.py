@@ -24,6 +24,8 @@ import time
 import random
 import argparse
 import datetime
+import datasets
+import transformers
 import torch.nn as nn
 
 from tqdm import tqdm
@@ -40,7 +42,6 @@ from transformers import (
     default_data_collator,
     DataCollatorWithPadding,
 )
-import transformers
 from transformers.utils.versions import require_version
 
 require_version("datasets>=1.8.0", 
@@ -217,6 +218,13 @@ if __name__ == '__main__':
     '''iii. Initialize the accelerator'''
     # We will let the accelerator handle device placement for us in this example.
     accelerator = Accelerator()
+    # We only want one process per machine to log things on the screen.
+    if accelerator.is_local_main_process:
+        datasets.utils.logging.set_verbosity_warning()
+        transformers.utils.logging.set_verbosity_info()
+    else:
+        datasets.utils.logging.set_verbosity_error()
+        transformers.utils.logging.set_verbosity_error()
     logger.info(f"\nProcess id: {os.getpid()}\n{accelerator.state}")
 
     '''iv. Fix random seed'''
@@ -251,8 +259,7 @@ if __name__ == '__main__':
     # Change the label mapping of model
     if getattr(model, 'num_labels') != num_labels:
         model.num_labels = num_labels
-    if not is_regression and getattr(model, 'classifier') and \
-        model.classifier.out_features != num_labels:
+    if getattr(model, 'classifier') and model.classifier.out_features != num_labels:
         logger.warning(f"\n=> model classifier does not match the dataset category. "
                        f"model output features:{model.classifier.out_features}, dataset number of labels: {num_labels}\n")
         in_features, bias = model.classifier.in_features, model.classifier.bias
@@ -300,9 +307,9 @@ if __name__ == '__main__':
     used = time.time() - s
     logger.info(f"=> process data takes time:{datetime.timedelta(seconds=used)}\n")
     # TODO: use 'select' for debugging
-    train_data = processed_data['train'].select(range(64))
+    train_data = processed_data['train']
     val_data = processed_data['validation_matched' \
-        if cfg.DATA.TASK_NAME == 'mnli' else 'validation'].select(range(64))
+        if cfg.DATA.TASK_NAME == 'mnli' else 'validation']
 
     # Log a few random samples from the training set:
     for index in random.sample(range(len(train_data)), 2):
@@ -443,30 +450,30 @@ if __name__ == '__main__':
     # this is the frequency that lr scheduler updates
     progress_bar = tqdm(range(num_train_steps), disable=not accelerator.is_local_main_process)
 
+    accelerator.wait_for_everyone()
+
     begin = time.time()
     for epoch in range(cfg.TRAIN.START_EPOCH, cfg.TRAIN.EPOCHS):
         Trainer.train(accelerator, model, train_dataloader,
                       optimizer, lr_scheduler, cfg, logger, epoch, progress_bar,
                       pruner=pruner, teacher=teacher, kd_cls_loss=kd_logit_loss, kd_reg_loss=kd_layer_loss)
 
-        # TODO: Decide whether this important
-        # accelerator.wait_for_everyone()
         if accelerator.is_local_main_process and (not epoch % cfg.SAVE_FREQ or epoch == cfg.TRAIN.EPOCHS - 1):
             checkpoint = save_checkpoint(
                 log_dir, accelerator.unwrap_model(model), 
                 accelerator.unwrap_model(optimizer), lr_scheduler, epoch, cfg, best_val_results,
                 tokenizer=tokenizer, accelerator=accelerator
             )
+
             logger.info(f"=> checkpoint '{checkpoint}' saved\n")
 
         # Eval
+        accelerator.wait_for_everyone()
         val_results = Trainer.val(accelerator, model, val_dataloader, cfg, logger, 
                                   epoch, metric_computor, is_regression)
+
         if cfg.DATA.TASK_NAME.lower() in ('mnli', 'qnli', 'rte', 'sst-2', 'wnli'):
-            # TODO: Decide whether this important
-            # accelerator.wait_for_everyone()
-            if val_results['accuracy'] > best_val_results['accuracy'] and \
-                accelerator.is_local_main_process:
+            if val_results['accuracy'] > best_val_results['accuracy'] and accelerator.is_local_main_process:
                 best_val_results['accuracy'] = val_results['accuracy']
                 best_checkpoint = save_checkpoint(
                     best_checkpoint_dir, accelerator.unwrap_model(model), 
@@ -477,9 +484,6 @@ if __name__ == '__main__':
                 logger.info(f"=> best checkpoint '{best_checkpoint}' saved\n")
         else:
             pass
-
-        # TODO: comment this debugging intent
-        break
 
     total = time.time() - begin
     total_str = str(datetime.timedelta(seconds=total))
@@ -494,8 +498,8 @@ if __name__ == '__main__':
             eval_dataset, collate_fn=data_collator, batch_size=cfg.DATA.VAL_BATCH_SIZE
         )
         eval_dataloader = accelerator.prepare(eval_dataloader)
-
         logger.info(f"=> Evaluate on MNLI-MISMATCHED validation set({eval_size} samples)")
+
         Trainer.val(accelerator, model, eval_dataloader, cfg, 
                     logger, cfg.TRAIN.EPOCHS, metric_computor, False)
 
