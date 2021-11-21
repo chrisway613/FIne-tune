@@ -9,8 +9,6 @@ import time
 import torch
 import datetime
 
-from datasets.load import load_metric
-
 from torch.cuda import max_memory_allocated
 from torch.nn.utils.clip_grad import clip_grad_norm_
 

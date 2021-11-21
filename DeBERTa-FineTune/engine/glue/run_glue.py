@@ -11,10 +11,12 @@
     i.   Run: accelerate config
     ii.  Reply the questions in order to setup your configuration
     iii. Run this script like:
-    TOKENIZERS_PARALLELISM=true accelerate launch run.py --task_name [TASK_NAME] \
-        --model_type [MODEL_NAME] --output_dir [OUTPUT_DIR] \
-        --train_batch_size [] --val_batch_size [] \
-        --pad_to_max_seq_length --linear_scaled_lr --weight_decay [] --pruning --kd_on..
+
+    TOKENIZERS_PARALLELISM=true accelerate launch run_glue.py --task_name [TASK_NAME] \
+        --model_type [MODEL_NAME] \
+        --output_dir [OUTPUT_DIR] --train_batch_size [TRAIN_BATCH_SIZE] --val_batch_size [VAL_BATCH_SIZE] \
+        --pad_to_max_seq_length --linear_scaled_lr --weight_decay [WEIGHT_DECAY] --pruning \
+        --prune_frequency [PRUNE_FREQUENCY] --kd_on..
 """
 
 import os
@@ -31,13 +33,14 @@ from torch.utils.data import DataLoader
 
 from accelerate import Accelerator, DistributedType
 from transformers import (
-    AutoConfig,
+    # AutoConfig,
     AutoTokenizer,
     AutoModelForSequenceClassification,
     SchedulerType,
     default_data_collator,
     DataCollatorWithPadding,
 )
+import transformers
 from transformers.utils.versions import require_version
 
 require_version("datasets>=1.8.0", 
@@ -240,11 +243,14 @@ if __name__ == '__main__':
     tokenizer = AutoTokenizer.from_pretrained(cfg.MODEL.TYPE, use_fast=not cfg.USE_SLOW_TOKENIZER)
     model = AutoModelForSequenceClassification.from_pretrained(
         cfg.MODEL.TYPE,
-        # TODO: may occure error when use another one down-stream task pretrained weight
+        # TODO: may occur error when use another one down-stream task pretrained weight
         # config=auto_config
     )
     used = time.time() - s
 
+    # Change the label mapping of model
+    if getattr(model, 'num_labels') != num_labels:
+        model.num_labels = num_labels
     if not is_regression and getattr(model, 'classifier') and \
         model.classifier.out_features != num_labels:
         logger.warning(f"\n=> model classifier does not match the dataset category. "
@@ -294,9 +300,9 @@ if __name__ == '__main__':
     used = time.time() - s
     logger.info(f"=> process data takes time:{datetime.timedelta(seconds=used)}\n")
     # TODO: use 'select' for debugging
-    train_data = processed_data['train'].select(range(8))
+    train_data = processed_data['train'].select(range(64))
     val_data = processed_data['validation_matched' \
-        if cfg.DATA.TASK_NAME == 'mnli' else 'validation'].select(range(8))
+        if cfg.DATA.TASK_NAME == 'mnli' else 'validation'].select(range(64))
 
     # Log a few random samples from the training set:
     for index in random.sample(range(len(train_data)), 2):
@@ -499,5 +505,5 @@ if __name__ == '__main__':
     # Release all references to the internal objects stored and call the garbage collector
     accelerator.free_memory()
     if accelerator.distributed_type == DistributedType.MULTI_GPU:
-        # Destroy all processes, and deinitialize the distributed package
+        # Destroy all processes, and de-initialize the distributed package
         kill_all_process()
