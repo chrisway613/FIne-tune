@@ -38,7 +38,7 @@ _C.DATA.PIN_MEMORY = True
 # Number of data loading threads
 _C.DATA.NUM_WORKERS = 8
 # Input sequence maximum length
-_C.DATA.MAX_SEQ_LENGTH = 512
+_C.DATA.MAX_SEQ_LENGTH = 256
 # Pad all samples to a specific length. Otherwise, dynamic padding is used
 _C.DATA.PAD_TO_MAX_SEQ_LENGTH = False
 
@@ -134,7 +134,7 @@ _C.PRUNE.PRUNING = False
 _C.PRUNE.SPARSITY = 0.9375
 _C.PRUNE.DEPLOY_DEVICE = 'none'
 _C.PRUNE.GROUP_SIZE = 64
-_C.PRUNE.FREQUENCY = 800
+_C.PRUNE.FREQUENCY = 200
 _C.PRUNE.FIXED_MASK = None
 _C.PRUNE.MASK = None
 
