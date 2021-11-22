@@ -35,7 +35,7 @@ from torch.utils.data import DataLoader
 
 from accelerate import Accelerator, DistributedType
 from transformers import (
-    # AutoConfig,
+    AutoConfig,
     AutoTokenizer,
     AutoModelForSequenceClassification,
     SchedulerType,
@@ -248,6 +248,7 @@ if __name__ == '__main__':
     s = time.time()
     # auto_config = AutoConfig.from_pretrained(cfg.MODEL.TYPE, 
     #                                          num_labels=num_labels, finetuning_task=cfg.DATA.TASK_NAME)
+    # logger.info(f"\n=> auto_config type:{type(auto_config)}\n content:{auto_config}\n")
     tokenizer = AutoTokenizer.from_pretrained(cfg.MODEL.TYPE, use_fast=not cfg.USE_SLOW_TOKENIZER)
     model = AutoModelForSequenceClassification.from_pretrained(
         cfg.MODEL.TYPE,

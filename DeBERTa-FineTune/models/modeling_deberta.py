@@ -981,6 +981,9 @@ class DebertaPreTrainedModel(PreTrainedModel):
     # 是否 Pytorch 的 checkpoint 模块以节省运行时内存
     # 父类 'PretrainedModel' 会检查 config_class 实例中是否有设置 'gradient_checkpointing' 属性
     # 若 设置为 True，则会调用子类(也就是这里的 DebertaPretrainedModel)的 _set_gradient_checkpointing() 方法
+    # 可以这样设置：
+    # i. cfg = AutoConfig.from_pretrained('microsoft/deberta', gradient_checkpointing=True)
+    # ii. model = AutoModel.from_pretrained('microsoft/deberta', config=cfg)
     supports_gradient_checkpointing = True
 
     def _init_weights(self, module):
