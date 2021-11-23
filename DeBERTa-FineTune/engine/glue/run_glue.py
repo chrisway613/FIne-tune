@@ -33,7 +33,9 @@ from tqdm import tqdm
 from torch.optim import optimizer
 from torch.utils.data import DataLoader
 
+from datasets import load_metric
 from accelerate import Accelerator, DistributedType
+
 from transformers import (
     # AutoConfig,
     AutoTokenizer,
@@ -246,8 +248,18 @@ if __name__ == '__main__':
 
     '''v. Load dataset'''
     s = time.time()
-    data, label_list, num_labels, is_regression, metric_computor = \
-        load_data(task_name=cfg.DATA.TASK_NAME)
+    task_name = cfg.DATA.TASK_NAME if (cfg.DATA.TRAIN_FILE is None or \
+        cfg.DATA.VAL_FILE is None) else None
+
+    data, label_list, num_labels, is_regression, metric_computor = load_data(
+        task_name=task_name, train_file=cfg.DATA.TRAIN_FILE, val_file=cfg.DATA.VAL_FILE
+    )
+    if metric_computor is None:
+        if cfg.DATA.TASK_NAME is not None:
+            metric_computor = load_metric('glue', cfg.DATA.TASK_NAME)
+        else:
+            metric_computor = load_metric('accuracy')
+
     used = time.time() - s
     logger.info(f"\n[Dataset]\n{data}\nLoad data takes time:{datetime.timedelta(seconds=used)}\n")
 
@@ -324,7 +336,8 @@ if __name__ == '__main__':
     # )
     processed_data = preprocess_data(
         data, model, tokenizer, num_labels, 
-        label_list, is_regression, logger, cfg, accelerator
+        label_list, is_regression, logger, cfg, accelerator,
+        task_name=task_name
     )
     used = time.time() - s
     logger.info(f"=> Process data takes time:{datetime.timedelta(seconds=used)}\n")

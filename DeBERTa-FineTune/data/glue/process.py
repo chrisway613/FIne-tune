@@ -5,10 +5,10 @@ from configs.glue.cfg import TASK_TO_KEYS
 # def preprocess_data(data, model, tokenizer, auto_config, num_labels, label_list, 
 #                     is_regression, logger, cfg, accelerator):
 def preprocess_data(data, model, tokenizer, num_labels, label_list, 
-                    is_regression, logger, cfg, accelerator):
+                    is_regression, logger, cfg, accelerator, task_name=None):
     # Preprocessing the datasets
-    if cfg.DATA.TASK_NAME is not None:
-        sentence1_key, sentence2_key = TASK_TO_KEYS[cfg.DATA.TASK_NAME]
+    if task_name is not None:
+        sentence1_key, sentence2_key = TASK_TO_KEYS[task_name]
     else:
         # Again, we try to have some nice defaults but don't hesitate to tweak to your use case.
         non_label_column_names = [name for name in data["train"].column_names if name != "label"]
@@ -24,7 +24,7 @@ def preprocess_data(data, model, tokenizer, num_labels, label_list,
     label_to_id = None
     if (
         model.config.label2id != PretrainedConfig(num_labels=num_labels).label2id
-        and cfg.DATA.TASK_NAME is not None
+        and task_name is not None
         and not is_regression
     ):
         # Some have all caps in their config, some don't.
@@ -41,7 +41,7 @@ def preprocess_data(data, model, tokenizer, num_labels, label_list,
                 f"model labels: {list(sorted(label_name_to_id.keys()))}, dataset labels: {list(sorted(label_list))}."
                 f"\nIgnoring the model labels as a result.\n"
             )
-    elif cfg.DATA.TASK_NAME is None:
+    elif task_name is None:
         label_to_id = {v: i for i, v in enumerate(label_list)}
     else:
         pass
@@ -50,7 +50,7 @@ def preprocess_data(data, model, tokenizer, num_labels, label_list,
         model.config.label2id = label_to_id
         model.config.id2label = {i: label for label, i in label_to_id.items()}
         # model.config.id2label = {id: label for label, id in auto_config.label2id.items()}
-    elif cfg.DATA.TASK_NAME is not None and not is_regression:
+    elif task_name is not None and not is_regression:
         model.config.label2id = {l: i for i, l in enumerate(label_list)}
         model.config.id2label = {i: l for i, l in enumerate(label_list)}
         # model.config.id2label = {id: label for label, id in auto_config.label2id.items()}
