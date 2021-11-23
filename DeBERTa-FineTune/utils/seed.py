@@ -9,6 +9,8 @@ import torch
 import random
 import numpy as np
 
+from functools import partial
+
 
 def setup_seed(seed, deterministic=False):
     """
@@ -44,3 +46,17 @@ def setup_seed(seed, deterministic=False):
             # CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8. 
             # For more information, go to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
             torch.use_deterministic_algorithms(True)
+
+
+def reseed_worker(worker_id, num_workers, seed, rank=0):
+    """Reseed dataloader workers"""
+    worker_seed = worker_id + seed + num_workers * rank
+
+    np.random.seed(worker_seed) 
+    random.seed(worker_seed) 
+
+
+def reseed_workers_fn(num_workers, seed, rank=0):
+    """Do reseed if there are multiple dataloader workers with multi processes"""
+    return partial(reseed_worker, num_workers=num_workers, seed=seed, rank=rank) \
+        if num_workers > 0 else None

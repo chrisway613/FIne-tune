@@ -979,6 +979,11 @@ class DebertaPreTrainedModel(PreTrainedModel):
     _keys_to_ignore_on_load_missing = ["position_ids"]
     _keys_to_ignore_on_load_unexpected = ["position_embeddings"]
     # 是否 Pytorch 的 checkpoint 模块以节省运行时内存
+    # 父类 'PretrainedModel' 会检查 config_class 实例中是否有设置 'gradient_checkpointing' 属性
+    # 若 设置为 True，则会调用子类(也就是这里的 DebertaPretrainedModel)的 _set_gradient_checkpointing() 方法
+    # 可以这样设置：
+    # i. cfg = AutoConfig.from_pretrained('microsoft/deberta', gradient_checkpointing=True)
+    # ii. model = AutoModel.from_pretrained('microsoft/deberta', config=cfg)
     supports_gradient_checkpointing = True
 
     def _init_weights(self, module):
@@ -995,6 +1000,7 @@ class DebertaPreTrainedModel(PreTrainedModel):
                 module.weight.data[module.padding_idx].zero_()
 
     def _set_gradient_checkpointing(self, module, value=False):
+        # 若设置了使用 checkpoint 模块节省内存，则仅对模型的 Encoder 部分设置
         if isinstance(module, DebertaEncoder):
             module.gradient_checkpointing = value
 

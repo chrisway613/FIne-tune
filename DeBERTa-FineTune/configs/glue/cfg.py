@@ -23,7 +23,7 @@ _C.DATA = CN()
 _C.DATA.DATASET = 'glue'
 # ["cola", "mnli", "mrpc", "qnli", "qqp", "rte", "sst2", "stsb", "wnli"]
 _C.DATA.TASK_NAME = None
-_C.DATA.LOAD_FROM_CACHE = False
+_C.DATA.LOAD_FROM_CACHE = True
 # csv or json
 _C.DATA.TRAIN_FILE = ''
 # csv or json
@@ -38,7 +38,7 @@ _C.DATA.PIN_MEMORY = True
 # Number of data loading threads
 _C.DATA.NUM_WORKERS = 8
 # Input sequence maximum length
-_C.DATA.MAX_SEQ_LENGTH = 512
+_C.DATA.MAX_SEQ_LENGTH = 256
 # Pad all samples to a specific length. Otherwise, dynamic padding is used
 _C.DATA.PAD_TO_MAX_SEQ_LENGTH = False
 
@@ -48,6 +48,8 @@ _C.DATA.PAD_TO_MAX_SEQ_LENGTH = False
 _C.MODEL = CN()
 # Model type
 _C.MODEL.TYPE = 'microsoft/deberta-large'
+# Model classifier dropout rate
+_C.MODEL.CLS_DROPOUT = None
 # Model name
 _C.MODEL.NAME = 'DeBERTa-large'
 # Checkpoint to resume, could be overwritten by command line argument
@@ -114,6 +116,8 @@ _C.TEST = CN()
 _C.TAG = 'GLUE'
 # Fixed random seed
 _C.SEED = 0
+# Whether to debug
+_C.DEBUG = False
 # Path to output folder, overwritten by command line argument
 _C.OUTPUT = ''
 # Frequency to save checkpoint
@@ -134,7 +138,7 @@ _C.PRUNE.PRUNING = False
 _C.PRUNE.SPARSITY = 0.9375
 _C.PRUNE.DEPLOY_DEVICE = 'none'
 _C.PRUNE.GROUP_SIZE = 64
-_C.PRUNE.FREQUENCY = 800
+_C.PRUNE.FREQUENCY = 200
 _C.PRUNE.FIXED_MASK = None
 _C.PRUNE.MASK = None
 
@@ -196,6 +200,8 @@ def update_config_by_args(config: CN, args):
 
     if args.model_type:
         config.MODEL.TYPE = args.model_type
+    if args.cls_dropout:
+        config.MODEL.CLS_DROPOUT = args.cls_dropout
     if args.use_slow_tokenizer:
         config.USE_SLOW_TOKENIZER = args.use_slow_tokenizer
     if args.weight_decay is not None:
@@ -266,6 +272,9 @@ def update_config_by_args(config: CN, args):
             config.TRAIN.KD.CLS_LOSS = args.kd_cls_loss
         if args.kd_reg_loss:
             config.TRAIN.KD.REG_LOSS = args.kd_reg_loss
+
+    if args.debug:
+        config.DEBUG = True
 
     config.freeze()
 

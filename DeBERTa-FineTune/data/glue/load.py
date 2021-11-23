@@ -34,7 +34,11 @@ def load_data(name="glue", task_name=None, train_file=None, val_file=None):
 
     # Labels
     if task_name is not None:
-        metric_computor = load_metric("glue", task_name)
+        try:
+            metric_computor = load_metric("glue", task_name)
+        except:
+            metric_computor = None
+
         is_regression = task_name == "stsb"
         if is_regression:
             num_labels = 1
@@ -47,7 +51,11 @@ def load_data(name="glue", task_name=None, train_file=None, val_file=None):
         if is_regression:
             num_labels = 1
         else:
-            metric_computor = load_metric("accuracy")
+            try:
+                metric_computor = load_metric("accuracy")
+            except:
+                metric_computor = None
+                
             # A useful fast method:
             # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.unique
             label_list = data["train"].unique("label")
