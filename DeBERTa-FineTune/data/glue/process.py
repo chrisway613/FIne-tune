@@ -72,10 +72,20 @@ def preprocess_data(data, model, tokenizer, num_labels, label_list,
                 # This situation may occur: some value in 'examples["label"]' does not existed in 'label_to_id',
                 # etc. for MNLI testing set, all of examples["label"] is -1
                 result["labels"] = [label_to_id.get(l) for l in examples["label"]]
-                for i, label in enumerate(result["labels"]):
-                    if label is None:
-                        logger.warning(f"=> label {examples['label'][i]} of example{i} "
-                                       f"does not in range(0, {num_labels}), please pay attention!")
+                # Un-comment below for debugging, but not for normal running
+                
+                # Cuz this will caught hash warning:
+                # the transform datasets.arrow_dataset.Dataset._map_single couldn't be 
+                # hashed properly, a random hash was used instead. 
+                # Make sure your transforms and parameters are serializable with pickle 
+                # or dill for the dataset fingerprinting and caching to work. 
+                # If you reuse this transform, the caching mechanism will consider 
+                # it to be different from the previous calls and recompute everything. 
+
+                # for i, label in enumerate(result["labels"]):
+                #     if label is None:
+                #         logger.warning(f"=> label {examples['label'][i]} of example{i} "
+                #                        f"does not in range(0, {num_labels}), please pay attention!")
             else:
                 # In all cases, rename the column to labels because the model will expect that.
                 result["labels"] = examples["label"]

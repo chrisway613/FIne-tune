@@ -35,7 +35,7 @@ from torch.utils.data import DataLoader
 
 from accelerate import Accelerator, DistributedType
 from transformers import (
-    AutoConfig,
+    # AutoConfig,
     AutoTokenizer,
     AutoModelForSequenceClassification,
     SchedulerType,
@@ -55,7 +55,7 @@ sys.path.append(os.path.join(BASE_DIR, '..', '..'))
 
 
 from utils.logger import Logger
-from utils.seed import setup_seed
+from utils.seed import setup_seed, reseed_workers_fn
 from utils.dist import kill_all_process
 from utils.misc import auto_resume_helper, load_checkpoint, save_checkpoint
 
@@ -111,6 +111,11 @@ def parse_args():
         "--model_type",
         type=str,
         help="Path to pretrained model or model identifier from huggingface.co/models."
+    )
+    parser.add_argument(
+        "--cls_dropout",
+        type=float,
+        help='model classifier dropout rate'
     )
     parser.add_argument(
         "--use_slow_tokenizer",
@@ -185,6 +190,8 @@ def parse_args():
     parser.add_argument('--kd_cls_loss', default='soft_ce', help='kd loss for output logits')
     parser.add_argument('--kd_reg_loss', default='mse', help='kd loss for Transformer layers')
 
+    parser.add_argument('--debug', action='store_true', help='whether to debug')
+
     args, _ = parser.parse_known_args()
     # Sanity checks
     if args.task_name is None and args.train_file is None and args.val_file is None:
@@ -229,9 +236,11 @@ if __name__ == '__main__':
 
     '''iv. Fix random seed'''
     # rank_seed = cfg.SEED + cfg.LOCAL_RANK
-    rank_seed = cfg.SEED + accelerator.local_process_index
-    setup_seed(rank_seed)
-    logger.info(f"=> Rank random seed={rank_seed}\n")
+    # rank_seed = cfg.SEED + accelerator.local_process_index
+    # setup_seed(rank_seed)
+    # logger.info(f"=> Rank random seed={rank_seed}\n")
+    setup_seed(cfg.SEED)
+    logger.info(f"=> Random seed: {cfg.SEED}\n")
 
     accelerator.wait_for_everyone()
 
@@ -240,7 +249,7 @@ if __name__ == '__main__':
     data, label_list, num_labels, is_regression, metric_computor = \
         load_data(task_name=cfg.DATA.TASK_NAME)
     used = time.time() - s
-    logger.info(f"\n[Dataset]\n{data}\nload data takes time:{datetime.timedelta(seconds=used)}\n")
+    logger.info(f"\n[Dataset]\n{data}\nLoad data takes time:{datetime.timedelta(seconds=used)}\n")
 
     '''vi. Build model and tokenizer'''
     # In distributed training, the 'from_pretrained' methods guarantee that 
@@ -257,25 +266,37 @@ if __name__ == '__main__':
     )
     used = time.time() - s
 
+    # Alter the classifier dropout rate
+    if getattr(model, 'dropout', None) and cfg.MODEL.CLS_DROPOUT is not None:
+        logger.info(f"\nSet model classifier dropout rate from "
+                    f"{model.dropout.drop_prob} to {cfg.MODEL.CLS_DROPOUT}\n")
+        model.dropout.drop_prob = cfg.MODEL.CLS_DROPOUT
+        # Also change the value in model config
+        if getattr(model.config, "cls_dropout", None):
+            model.config.cls_dropout = cfg.MODEL.CLS_DROPOUT
+
     # Change the label mapping of model
-    if getattr(model, 'num_labels') != num_labels:
-        model.num_labels = num_labels
-    if getattr(model, 'classifier') and model.classifier.out_features != num_labels:
-        logger.warning(f"\n=> model classifier does not match the dataset category. "
-                       f"model output features:{model.classifier.out_features}, dataset number of labels: {num_labels}\n")
+    if getattr(model, 'classifier', None) and model.classifier.out_features != num_labels:
+        logger.warning(f"\nModel classifier does not match the dataset category:\n"
+                       f"model output features: {model.classifier.out_features}, dataset number of labels: {num_labels}\n"
+                       f"Now, change to consistent with dataset.\n")
+        
+        if getattr(model, 'num_labels', None) != num_labels:
+            model.num_labels = num_labels
+        
         in_features, bias = model.classifier.in_features, model.classifier.bias
         model.classifier = nn.Linear(in_features, num_labels, bias=bias is not None)
 
-    logger.info(f"=> Build model '{cfg.MODEL.NAME} from pretrained '{cfg.MODEL.TYPE}'")
+    logger.info(f"=> Build model '{cfg.MODEL.NAME}' from pretrained '{cfg.MODEL.TYPE}'")
     logger.info(f"{str(model)}\n")
-    logger.info(f"=> load model(w tokenizer) takes time: {datetime.timedelta(seconds=used)}\n")
+    logger.info(f"=> Load model(w tokenizer) takes time: {datetime.timedelta(seconds=used)}\n")
 
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    logger.info(f"=> number of model params: {n_parameters}")
+    logger.info(f"=> Number of model params: {n_parameters}")
 
     if hasattr(model, 'flops'):
         flops = model.flops()
-        logger.info(f"=> number of FLOPs: {flops / 1e9}G\n")
+        logger.info(f"=> Number of FLOPs: {flops / 1e9}G\n")
     
     teacher = kd_logit_loss = kd_layer_loss = None
     if cfg.TRAIN.KD.ON:
@@ -306,11 +327,20 @@ if __name__ == '__main__':
         label_list, is_regression, logger, cfg, accelerator
     )
     used = time.time() - s
-    logger.info(f"=> process data takes time:{datetime.timedelta(seconds=used)}\n")
-    # TODO: use 'select' for debugging
+    logger.info(f"=> Process data takes time:{datetime.timedelta(seconds=used)}\n")
+
     train_data = processed_data['train']
     val_data = processed_data['validation_matched' \
         if cfg.DATA.TASK_NAME == 'mnli' else 'validation']
+    
+    if cfg.DEBUG:
+        num_train_samples = cfg.DATA.TRAIN_BATCH_SIZE * accelerator.num_processes
+        num_val_samples = cfg.DATA.VAL_BATCH_SIZE * accelerator.num_processes
+
+        train_data = train_data.select(range(num_train_samples))
+        val_data = val_data.select(range(num_val_samples))
+
+        logger.info(f"=> Debug mode on! {num_train_samples} train samples & {num_val_samples} val samples selected\n")
 
     # Log a few random samples from the training set:
     for index in random.sample(range(len(train_data)), 2):
@@ -331,14 +361,18 @@ if __name__ == '__main__':
     train_dataloader = DataLoader(
         train_data, batch_size=cfg.DATA.TRAIN_BATCH_SIZE,
         shuffle=True, num_workers=cfg.DATA.NUM_WORKERS,
-        collate_fn=data_collator, pin_memory=cfg.DATA.PIN_MEMORY
+        collate_fn=data_collator, pin_memory=cfg.DATA.PIN_MEMORY,
+        # Set 'worker_init_fn' for randomness of multi-process
+        # Random seed of different sub process in different rank is different
+        worker_init_fn=reseed_workers_fn(cfg.DATA.NUM_WORKERS, cfg.SEED, rank=cfg.LOCAL_RANK)
     )
     val_dataloader = DataLoader(
         val_data, batch_size=cfg.DATA.VAL_BATCH_SIZE, 
-        num_workers=cfg.DATA.NUM_WORKERS, pin_memory=cfg.DATA.PIN_MEMORY, collate_fn=data_collator
+        num_workers=cfg.DATA.NUM_WORKERS, pin_memory=cfg.DATA.PIN_MEMORY,
+        collate_fn=data_collator
     )
     used = time.time() - s
-    logger.info(f"=> dataloader takes time:{datetime.timedelta(used)}\n")
+    logger.info(f"=> Dataloader takes time:{datetime.timedelta(used)}\n")
 
     '''viii. Build optimizer & lr_scheduler'''
     # Linear scale the learning rate according to total batch size
@@ -466,7 +500,7 @@ if __name__ == '__main__':
                 tokenizer=tokenizer, accelerator=accelerator
             )
 
-            logger.info(f"=> checkpoint '{checkpoint}' saved\n")
+            logger.info(f"=> Checkpoint '{checkpoint}' saved\n")
 
         # Eval
         accelerator.wait_for_everyone()
@@ -482,7 +516,7 @@ if __name__ == '__main__':
                     epoch, cfg, best_val_results, tokenizer=tokenizer, accelerator=accelerator
                 )
 
-                logger.info(f"=> best checkpoint '{best_checkpoint}' saved\n")
+                logger.info(f"=> Best checkpoint '{best_checkpoint}' saved\n")
         else:
             pass
 
