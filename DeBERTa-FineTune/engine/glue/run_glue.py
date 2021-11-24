@@ -46,6 +46,7 @@ from transformers import (
 )
 from transformers.utils.versions import require_version
 
+
 require_version("datasets>=1.8.0", 
                 "To fix: pip install -r examples/pytorch/text-classification/requirements.txt")
 
@@ -54,7 +55,6 @@ import sys
 BASE_DIR = os.path.dirname(__file__)
 sys.path.append(os.path.join(BASE_DIR, '..'))
 sys.path.append(os.path.join(BASE_DIR, '..', '..'))
-
 
 from utils.logger import Logger
 from utils.seed import setup_seed, reseed_workers_fn
@@ -267,15 +267,45 @@ if __name__ == '__main__':
     # In distributed training, the 'from_pretrained' methods guarantee that 
     # only one local process can concurrently download model & vocab.
     s = time.time()
+
+    # For custom model config
+    # from transformers.models.deberta.configuration_deberta import DebertaConfig
+
+    # model_config_dict = {
+    #     "model_type": "deberta",
+    #     "attention_probs_dropout_prob": 0.1,
+    #     "hidden_act": "gelu",
+    #     "hidden_dropout_prob": 0.1,
+    #     "hidden_size": 1024,
+    #     "initializer_range": 0.02,
+    #     "intermediate_size": 4096,
+    #     "max_position_embeddings": 512,
+    #     "relative_attention": False,
+    #     "pos_att_type": None,
+    #     "layer_norm_eps": 1e-7,
+    #     "max_relative_positions": -1,
+    #     "position_biased_input": False,
+    #     "num_attention_heads": 16,
+    #     "num_hidden_layers": 24,
+    #     "type_vocab_size": 0,
+    #     "vocab_size": 50265
+    # }
+    # model_config = DebertaConfig(**model_config_dict)
+
+    # from transformers.models.deberta.modeling_deberta import DebertaForSequenceClassification
+
+    # model = DebertaForSequenceClassification._from_config(model_config)
+    
     # auto_config = AutoConfig.from_pretrained(cfg.MODEL.TYPE, 
     #                                          num_labels=num_labels, finetuning_task=cfg.DATA.TASK_NAME)
     # logger.info(f"\n=> auto_config type:{type(auto_config)}\n content:{auto_config}\n")
-    tokenizer = AutoTokenizer.from_pretrained(cfg.MODEL.TYPE, use_fast=not cfg.USE_SLOW_TOKENIZER)
+
     model = AutoModelForSequenceClassification.from_pretrained(
         cfg.MODEL.TYPE,
         # TODO: may occur error when use another one down-stream task pretrained weight
         # config=auto_config
     )
+    tokenizer = AutoTokenizer.from_pretrained(cfg.MODEL.TYPE, use_fast=not cfg.USE_SLOW_TOKENIZER)
     used = time.time() - s
 
     # Alter the classifier dropout rate

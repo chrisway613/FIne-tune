@@ -23,7 +23,6 @@ import warnings
 
 from typing import Any, Dict, Tuple, Union
 
-from . import __version__
 from transformers.file_utils import (
     CONFIG_NAME,
     PushToHubMixin,
@@ -38,6 +37,9 @@ from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)
+
+# Original from transfomers.__init__.__version__
+__version__ = "4.12.3"
 
 
 class PretrainedConfig(PushToHubMixin):

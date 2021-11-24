@@ -15,7 +15,7 @@
 
 """ DeBERTa model configuration """
 
-from configuration_utils import PretrainedConfig
+from .configuration_utils import PretrainedConfig
 
 
 # 模型结构的参数配置

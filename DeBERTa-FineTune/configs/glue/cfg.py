@@ -25,9 +25,9 @@ _C.DATA.DATASET = 'glue'
 _C.DATA.TASK_NAME = None
 _C.DATA.LOAD_FROM_CACHE = True
 # csv or json
-_C.DATA.TRAIN_FILE = ''
+_C.DATA.TRAIN_FILE = None
 # csv or json
-_C.DATA.VAL_FILE = ''
+_C.DATA.VAL_FILE = None
 # Batch size for a single GPU, could be overwritten by command line argument
 _C.DATA.TRAIN_BATCH_SIZE = 16
 _C.DATA.VAL_BATCH_SIZE = 16
@@ -36,7 +36,7 @@ _C.DATA.BASE_BATCH_SIZE = 32 * 8
 # Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.
 _C.DATA.PIN_MEMORY = True
 # Number of data loading threads
-_C.DATA.NUM_WORKERS = 8
+_C.DATA.NUM_WORKERS = 4
 # Input sequence maximum length
 _C.DATA.MAX_SEQ_LENGTH = 256
 # Pad all samples to a specific length. Otherwise, dynamic padding is used
@@ -60,9 +60,9 @@ _C.MODEL.NO_DECAY_KEYWORDS = ("LayerNorm.weight", "bias")
 # Training settings
 # -----------------------------------------------------------------------------
 _C.TRAIN = CN()
-_C.TRAIN.EPOCHS = 4
+_C.TRAIN.EPOCHS = 6
 _C.TRAIN.START_EPOCH = 0
-_C.TRAIN.WARMUP_STEPS = 500
+_C.TRAIN.WARMUP_STEPS = 50
 _C.TRAIN.WEIGHT_DECAY = 1e-2
 
 _C.TRAIN.LR = 1e-5
@@ -138,7 +138,7 @@ _C.PRUNE.PRUNING = False
 _C.PRUNE.SPARSITY = 0.9375
 _C.PRUNE.DEPLOY_DEVICE = 'none'
 _C.PRUNE.GROUP_SIZE = 64
-_C.PRUNE.FREQUENCY = 200
+_C.PRUNE.FREQUENCY = 50
 _C.PRUNE.FIXED_MASK = None
 _C.PRUNE.MASK = None
 
