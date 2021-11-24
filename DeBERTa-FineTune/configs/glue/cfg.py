@@ -36,7 +36,7 @@ _C.DATA.BASE_BATCH_SIZE = 32 * 8
 # Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.
 _C.DATA.PIN_MEMORY = True
 # Number of data loading threads
-_C.DATA.NUM_WORKERS = 4
+_C.DATA.NUM_WORKERS = 8
 # Input sequence maximum length
 _C.DATA.MAX_SEQ_LENGTH = 256
 # Pad all samples to a specific length. Otherwise, dynamic padding is used
@@ -64,6 +64,7 @@ _C.TRAIN.EPOCHS = 6
 _C.TRAIN.START_EPOCH = 0
 _C.TRAIN.WARMUP_STEPS = 50
 _C.TRAIN.WEIGHT_DECAY = 1e-2
+_C.TRAIN.MAX_EARLY_STOP_EPOCHS = 10
 
 _C.TRAIN.LR = 1e-5
 _C.TRAIN.MIN_LR = 0.
@@ -138,7 +139,7 @@ _C.PRUNE.PRUNING = False
 _C.PRUNE.SPARSITY = 0.9375
 _C.PRUNE.DEPLOY_DEVICE = 'none'
 _C.PRUNE.GROUP_SIZE = 64
-_C.PRUNE.FREQUENCY = 50
+_C.PRUNE.FREQUENCY = 100
 _C.PRUNE.FIXED_MASK = None
 _C.PRUNE.MASK = None
 
@@ -227,6 +228,8 @@ def update_config_by_args(config: CN, args):
         config.TRAIN.EPOCHS = args.epochs
     if args.warmup_steps:
         config.TRAIN.WARMUP_STEPS = args.warmup_steps
+    if args.max_early_stop_epochs:
+        config.TRAIN.MAX_EARLY_STOP_EPOCHS = args.max_early_stop_epochs
 
     if args.train_batch_size:
         config.DATA.TRAIN_BATCH_SIZE = args.train_batch_size

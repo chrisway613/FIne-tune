@@ -161,7 +161,9 @@ def parse_args():
     parser.add_argument(
         "--warmup_steps", type=int, help="Number of steps for the warmup in the lr scheduler."
     )
-    
+    parser.add_argument('--max_early_stop_epochs', type=int,
+                        help="Early stop when we cannot get better performance by continuous epochs of this value")
+
     parser.add_argument("--seed", type=int, help="A seed for reproducible training.")
     parser.add_argument('--resume', type=str, help='path to the checkpoint should be resume from')
     parser.add_argument('--auto_resume', action='store_true', help='whether to auto resume from history')
@@ -530,20 +532,22 @@ if __name__ == '__main__':
 
     accelerator.wait_for_everyone()
 
-    begin = time.time()
+    # 'accumulate_steps' for early stopping
+    begin, accumulate_steps = time.time(), 0
     for epoch in range(cfg.TRAIN.START_EPOCH, cfg.TRAIN.EPOCHS):
         Trainer.train(accelerator, model, train_dataloader,
                       optimizer, lr_scheduler, cfg, logger, epoch, progress_bar,
                       pruner=pruner, teacher=teacher, kd_cls_loss=kd_logit_loss, kd_reg_loss=kd_layer_loss)
 
-        if accelerator.is_local_main_process and (not epoch % cfg.SAVE_FREQ or epoch == cfg.TRAIN.EPOCHS - 1):
-            checkpoint = save_checkpoint(
-                log_dir, accelerator.unwrap_model(model), 
-                accelerator.unwrap_model(optimizer), lr_scheduler, epoch, cfg, best_val_results,
-                tokenizer=tokenizer, accelerator=accelerator
-            )
-
-            logger.info(f"=> Checkpoint '{checkpoint}' saved\n")
+        if (not epoch % cfg.SAVE_FREQ) or (epoch == cfg.TRAIN.EPOCHS - 1):
+            # Only main process will save checkpoint
+            if accelerator.is_local_main_process:
+                checkpoint = save_checkpoint(
+                    log_dir, accelerator.unwrap_model(model), 
+                    accelerator.unwrap_model(optimizer), lr_scheduler, epoch, cfg, best_val_results,
+                    tokenizer=tokenizer, accelerator=accelerator
+                )
+                logger.info(f"=> Checkpoint '{checkpoint}' saved\n")
 
         # Eval
         accelerator.wait_for_everyone()
@@ -551,17 +555,29 @@ if __name__ == '__main__':
                                   epoch, metric_computor, is_regression)
 
         if cfg.DATA.TASK_NAME.lower() in ('mnli', 'qnli', 'rte', 'sst-2', 'wnli'):
-            if val_results['accuracy'] > best_val_results['accuracy'] and accelerator.is_local_main_process:
-                best_val_results['accuracy'] = val_results['accuracy']
-                best_checkpoint = save_checkpoint(
-                    best_checkpoint_dir, accelerator.unwrap_model(model), 
-                    accelerator.unwrap_model(optimizer), lr_scheduler, 
-                    epoch, cfg, best_val_results, tokenizer=tokenizer, accelerator=accelerator
-                )
+            if val_results['accuracy'] > best_val_results['accuracy']:
+                # Reset accumulate bad performance step
+                accumulate_steps = 0
 
-                logger.info(f"=> Best checkpoint '{best_checkpoint}' saved\n")
+                # Only main process will save checkpoint
+                if accelerator.is_local_main_process:
+                    best_val_results['accuracy'] = val_results['accuracy']
+                    best_checkpoint = save_checkpoint(
+                        best_checkpoint_dir, accelerator.unwrap_model(model), 
+                        accelerator.unwrap_model(optimizer), lr_scheduler, 
+                        epoch, cfg, best_val_results, tokenizer=tokenizer, accelerator=accelerator
+                    )
+                    logger.info(f"=> Best checkpoint '{best_checkpoint}' saved\n")
+            else:
+                # Count bad performance step
+                accumulate_steps += 1
         else:
             pass
+        
+        if accumulate_steps > cfg.TRAIN.MAX_EARLY_STOP_EPOCHS:
+            logger.info(f"\n=> Early stopping.. "
+                        f"cuz we cannot get better performance by {cfg.TRAIN.MAX_EARLY_STOP_EPOCHS} continuous epochs")
+            break
 
     total = time.time() - begin
     total_str = str(datetime.timedelta(seconds=total))
