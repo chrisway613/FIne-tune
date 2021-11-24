@@ -25,9 +25,9 @@ _C.DATA.DATASET = 'glue'
 _C.DATA.TASK_NAME = None
 _C.DATA.LOAD_FROM_CACHE = True
 # csv or json
-_C.DATA.TRAIN_FILE = ''
+_C.DATA.TRAIN_FILE = None
 # csv or json
-_C.DATA.VAL_FILE = ''
+_C.DATA.VAL_FILE = None
 # Batch size for a single GPU, could be overwritten by command line argument
 _C.DATA.TRAIN_BATCH_SIZE = 16
 _C.DATA.VAL_BATCH_SIZE = 16
