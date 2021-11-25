@@ -245,7 +245,7 @@ def update_config_by_args(config: CN, args):
     if args.output_dir:
         config.OUTPUT = args.output_dir
     tag = config.DATA.TASK_NAME if config.DATA.TASK_NAME else config.DATA.DATASET
-    config.OUTPUT = os.path.join(config.OUTPUT, config.MODEL.NAME, tag)
+    config.OUTPUT = os.path.join(config.OUTPUT, tag, config.MODEL.NAME.lower())
     
     if args.seed:
         config.SEED = args.seed
