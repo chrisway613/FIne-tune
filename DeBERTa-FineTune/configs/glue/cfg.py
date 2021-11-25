@@ -201,6 +201,8 @@ def update_config_by_args(config: CN, args):
 
     if args.model_type:
         config.MODEL.TYPE = args.model_type
+        # microsoft/DeBERTa-base-mnli -> deberta-base-mnli
+        config.MODEL_NAME = config.MODEL.TYPE.split('/')[-1].lower()
     if args.cls_dropout:
         config.MODEL.CLS_DROPOUT = args.cls_dropout
     if args.use_slow_tokenizer:
