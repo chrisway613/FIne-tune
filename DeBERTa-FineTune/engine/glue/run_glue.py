@@ -19,13 +19,17 @@
         --prune_frequency [PRUNE_FREQUENCY] --kd_on..
 """
 
+from ast import parse
 import os
 import time
 import random
 import argparse
 import datetime
 import datasets
+from torch.cuda import get_arch_list
 import transformers
+
+import torch
 import torch.nn as nn
 
 from tqdm import tqdm
@@ -193,6 +197,7 @@ def parse_args():
     parser.add_argument('--kd_on', action='store_true', help='whether to use knowledge distillation')
     parser.add_argument('--kd_cls_loss', default='soft_ce', help='kd loss for output logits')
     parser.add_argument('--kd_reg_loss', default='mse', help='kd loss for Transformer layers')
+    parser.add_argument('--teacher_path', type=str, help='path to eacher state dict')
 
     parser.add_argument('--debug', action='store_true', help='whether to debug')
 
@@ -316,8 +321,8 @@ if __name__ == '__main__':
                     f"{model.dropout.drop_prob} to {cfg.MODEL.CLS_DROPOUT}\n")
         model.dropout.drop_prob = cfg.MODEL.CLS_DROPOUT
         # Also change the value in model config
-        if getattr(model.config, "cls_dropout", None):
-            model.config.cls_dropout = cfg.MODEL.CLS_DROPOUT
+        # if getattr(model.config, "cls_dropout", None):
+        model.config.cls_dropout = cfg.MODEL.CLS_DROPOUT
 
     # Change the label mapping of model
     if getattr(model, 'classifier', None) and model.classifier.out_features != num_labels:
@@ -330,9 +335,13 @@ if __name__ == '__main__':
         
         in_features, bias = model.classifier.in_features, model.classifier.bias
         model.classifier = nn.Linear(in_features, num_labels, bias=bias is not None)
+    
+    if getattr(model.config, 'num_labels', None) != num_labels:
+        model.config.num_labels = num_labels
 
     logger.info(f"=> Build model '{cfg.MODEL.NAME}' from pretrained '{cfg.MODEL.TYPE}'")
     logger.info(f"{str(model)}\n")
+    logger.info(f"\n[Model Config]:\n{model.config}\n")
     logger.info(f"=> Load model(w tokenizer) takes time: {datetime.timedelta(seconds=used)}\n")
 
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -344,21 +353,43 @@ if __name__ == '__main__':
     
     teacher = kd_logit_loss = kd_layer_loss = None
     if cfg.TRAIN.KD.ON:
-        teacher = AutoModelForSequenceClassification.from_pretrained(
-            cfg.MODEL.TYPE,
-            # TODO: may occure error when use another one down-stream task pretrained weight
-            # config=auto_config
-        )
+        # teacher = AutoModelForSequenceClassification.from_pretrained(cfg.MODEL.TYPE)
+
+        # Alter the classifier dropout rate
+        # if getattr(teacher, 'dropout', None) and cfg.MODEL.CLS_DROPOUT is not None:
+        #     teacher.dropout.drop_prob = cfg.MODEL.CLS_DROPOUT
+        #     # Also change the value in model config
+        #     teacher.config.cls_dropout = cfg.MODEL.CLS_DROPOUT
+
+        # Change the label mapping of model
+        # if getattr(teacher, 'classifier', None) and teacher.classifier.out_features != num_labels:
+        #     if getattr(teacher, 'num_labels', None) != num_labels:
+        #         teacher.num_labels = num_labels
+        #         teacher.config.num_labels = num_labels
+            
+        #     in_features, bias = teacher.classifier.in_features, teacher.classifier.bias
+        #     teacher.classifier = nn.Linear(in_features, num_labels, bias=bias is not None)
+        
+        teacher_state_dict = torch.load(cfg.TRAIN.KD.TEACHER_PATH, map_location='cpu')
+        teacher_config_dict, teacher_model_dict = teacher_state_dict['model_config'], teacher_state_dict['model']
+        
+        from transformers.models.deberta.configuration_deberta import DebertaConfig
+        from transformers.models.deberta.modeling_deberta import DebertaForSequenceClassification
+
+        teacher_config = DebertaConfig.from_dict(teacher_config_dict)
+        teacher = DebertaForSequenceClassification(teacher_config)
+        teacher.load_state_dict(teacher_model_dict)
+
         # Pay attention to set the teacher to eval model
         teacher.eval()
 
         kd_logit_loss = loss_dict.get(cfg.TRAIN.KD.CLS_LOSS)
         kd_layer_loss = loss_dict.get(cfg.TRAIN.KD.REG_LOSS)
 
-        # TODO: how to output the name of a variable
         logger.info(f"\nKD mode: ON\nTeacher model: {teacher.__class__.__name__}\n"
                     f"Output logit loss: {kd_logit_loss.__name__}\n"
-                    f"Transformer layer loss: {kd_layer_loss.__name__}\n")
+                    f"Transformer layer loss: {kd_layer_loss.__name__}\n"
+                    f"[Teacher Config]\n{teacher.config}\n")
 
     '''vii. Preprocess dataset then feed in dataloader'''
     s = time.time()
@@ -544,7 +575,8 @@ if __name__ == '__main__':
             if accelerator.is_local_main_process:
                 checkpoint = save_checkpoint(
                     log_dir, accelerator.unwrap_model(model), 
-                    accelerator.unwrap_model(optimizer), lr_scheduler, epoch, cfg, best_val_results,
+                    accelerator.unwrap_model(optimizer), lr_scheduler, epoch, 
+                    accelerator.unwrap_model(model).config, best_val_results,
                     tokenizer=tokenizer, accelerator=accelerator
                 )
                 logger.info(f"=> Checkpoint '{checkpoint}' saved\n")
@@ -553,6 +585,11 @@ if __name__ == '__main__':
         accelerator.wait_for_everyone()
         val_results = Trainer.val(accelerator, model, val_dataloader, cfg, logger, 
                                   epoch, metric_computor, is_regression)
+        if cfg.TRAIN.KD.ON:
+            teacher_val_results = Trainer.val(
+                accelerator, teacher, val_dataloader, cfg, logger, 
+                epoch, metric_computor, is_regression, teacher_mode=True
+            )
 
         if cfg.DATA.TASK_NAME.lower() in ('mnli', 'qnli', 'rte', 'sst-2', 'wnli'):
             if val_results['accuracy'] > best_val_results['accuracy']:
@@ -565,18 +602,25 @@ if __name__ == '__main__':
                     best_checkpoint = save_checkpoint(
                         best_checkpoint_dir, accelerator.unwrap_model(model), 
                         accelerator.unwrap_model(optimizer), lr_scheduler, 
-                        epoch, cfg, best_val_results, tokenizer=tokenizer, accelerator=accelerator
+                        epoch, accelerator.unwrap_model(model).config, 
+                        best_val_results, tokenizer=tokenizer, accelerator=accelerator
                     )
-                    logger.info(f"=> Best checkpoint '{best_checkpoint}' saved\n")
+                    logger.info(f"\n=> Best checkpoint '{best_checkpoint}' saved\n")
             else:
                 # Count bad performance step
                 accumulate_steps += 1
+            
+            if cfg.TRAIN.KD.ON:
+                logger.info(
+                    f"\n[Epoch{epoch}] Gap between teacher & student:\n"
+                    f"\tAcc: {teacher_val_results['accuracy'] - val_results['accuracy']}\n"
+                )
         else:
             pass
         
         if accumulate_steps > cfg.TRAIN.MAX_EARLY_STOP_EPOCHS:
             logger.info(f"\n=> Early stopping.. "
-                        f"cuz we cannot get better performance by {cfg.TRAIN.MAX_EARLY_STOP_EPOCHS} continuous epochs")
+                        f"we cannot get better performance by {cfg.TRAIN.MAX_EARLY_STOP_EPOCHS} continuous epochs")
             break
 
     total = time.time() - begin

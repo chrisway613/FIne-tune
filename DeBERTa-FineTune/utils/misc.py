@@ -43,7 +43,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, config, logger):
 
 
 def save_checkpoint(checkpoint_dir, model, optimizer, lr_scheduler, 
-                    epoch, config, results, tokenizer=None, accelerator=None):
+                    epoch, model_config, results, tokenizer=None, accelerator=None):
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     epoch_dir = os.path.join(checkpoint_dir, f'epoch{epoch}')
@@ -58,11 +58,15 @@ def save_checkpoint(checkpoint_dir, model, optimizer, lr_scheduler,
     if tokenizer is not None:
         tokenizer.save_pretrained(epoch_dir)
 
+    model_config_dict = model_config.to_dict()
+    if getattr(model_config, 'num_labels', None) is not None:
+        model_config_dict.update(num_labels=model_config.num_labels)
+
     save_state = {'model': model.state_dict(),
                   'optimizer': optimizer.state_dict(),
                   'lr_scheduler': lr_scheduler.state_dict(),
                   'epoch': epoch,
-                  'config': config,
+                  'model_config': model_config_dict,
                   'metric': results}
 
     checkpoint = os.path.join(checkpoint_dir, f'epoch{epoch}.pth')

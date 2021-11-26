@@ -24,17 +24,22 @@ class Trainer:
 
                 # Forward
                 outputs = model(**batch, output_attentions=True, output_hidden_states=True)
+                # hidden_states, attns = outputs.hidden_states, outputs.attentions
                 hidden_states, attns, logits = outputs.hidden_states, outputs.attentions, outputs.logits
 
                 # Pay attention to set 'no_gread' for teacher forwarding
                 with torch.no_grad():
                     teacher_outputs = teacher(**batch, output_attentions=True, output_hidden_states=True)
+                    # teacher_hidden_states, teacher_attns = \
+                    #     teacher_outputs.hidden_states, teacher_outputs.attentions
                     teacher_hidden_states, teacher_attns, teacher_logits = \
                         teacher_outputs.hidden_states, teacher_outputs.attentions, \
                             teacher_outputs.logits
 
                 # Logits kd loss(ce)
+                # TODO: add logit loss if teacher has pretrained head
                 logit_loss = kd_cls_loss(logits, teacher_logits)
+                # logit_loss = outputs.loss
                 # Hidden states kd loss(mse)
                 hs_loss = 0.
                 for layer_hidden_state, teacher_layer_hidden_state in \
@@ -46,6 +51,7 @@ class Trainer:
                     zip(attns[config.TRAIN.KD.BEGIN_LAYER:], teacher_attns[config.TRAIN.KD.BEGIN_LAYER:]):
                     attn_loss = attn_loss + kd_reg_loss(layer_attn, teacher_layer_attn)
                 
+                # loss_raw = hs_loss + attn_loss
                 loss_raw = logit_loss + hs_loss + attn_loss
             else:
                 outputs = model(**batch)
@@ -93,23 +99,24 @@ class Trainer:
                 lr = optimizer.param_groups[0]['lr']
                 memory_used = max_memory_allocated() / (1024. ** 2)
                 kd_loss_info = '' if teacher is None else \
-                    (f"kd logit loss: {logit_loss.item():.4f}\t"
-                     f"kd hidden states loss: {hs_loss.item():.4f}\t"
-                     f"kd attentions loss: {attn_loss.item():.4f}")
+                    (f"kd logit loss: {logit_loss.item():.8f}\t"
+                     f"kd hidden states loss: {hs_loss.item():.8f}\t"
+                     f"kd attentions loss: {attn_loss.item():.8f}")
 
                 logger.info(
                     f'Train Epoch[{epoch}/{config.TRAIN.EPOCHS}] Step[{step}/{len(dataloader)}]\t'
                     f'lr: {lr:.10f}\t'
-                    f'batch time: {batch_time:.4f}s\t'
-                    f'loss raw: {loss_raw.item():.4f}\t'
-                    f'loss(w gradient accumulate): {loss.item():.4f}\t'
+                    f'batch time: {batch_time:.0f}s\t'
+                    f'loss raw: {loss_raw.item():.8f}\t'
+                    f'loss(w gradient accumulate): {loss.item():.8f}\t'
                     f'{kd_loss_info}\t'
-                    f'grad norm: {grad_norm:.4f}\t'
+                    f'grad norm: {grad_norm:.8f}\t'
                     f'memory used: {memory_used:.0f}MB\n'
                 )
             
             del loss
             if teacher is not None:
+                # del hs_loss, attn_loss
                 del logit_loss, hs_loss, attn_loss
             
             batch_start = time.time()
@@ -121,7 +128,7 @@ class Trainer:
 
     @classmethod
     def val(cls, accelerator, model, dataloader, config, logger, 
-            epoch, metric_computor, is_regression):
+            epoch, metric_computor, is_regression, teacher_mode=False):
         model.eval()
         
         start = batch_start = time.time()
@@ -145,9 +152,10 @@ class Trainer:
             if not step % config.PRINT_FREQ:
                 memory_used = max_memory_allocated() / (1024. ** 2)
                 logger.info(
+                    f'\n{"[Teacher]" if teacher_mode else ""}  '
                     f'Val Epoch[{epoch}/{config.TRAIN.EPOCHS}] Step[{step}/{len(dataloader)}]\t'
                     f'batch time: {batch_time:.4f}s\t'
-                    f'loss: {loss.item():.4f}\t'
+                    f'loss: {loss.item():.8f}\t'
                     f'memory used: {memory_used:.0f}MB\n'
                 )
 
@@ -155,8 +163,11 @@ class Trainer:
         
         epoch_time = time.time() - start
         val_results = metric_computor.compute()
-        logger.info(f"=> Epoch{epoch} metric: {val_results} \
-            validation takes time: {datetime.timedelta(seconds=epoch_time)}\t")
+        logger.info(
+            f"\n{'[Teacher]' if teacher_mode else ''}  "
+            f"Epoch{epoch} metric: {val_results} "
+            f"validation takes time: {datetime.timedelta(seconds=epoch_time)}\t"
+        )
 
         torch.cuda.empty_cache()
         

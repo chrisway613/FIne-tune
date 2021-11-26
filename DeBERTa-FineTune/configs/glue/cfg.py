@@ -99,11 +99,13 @@ _C.TRAIN.KD = CN()
 # Whether to use kd
 _C.TRAIN.KD.ON = False
 # Decide from which Transformer layer we will kd
-_C.TRAIN.KD.BEGIN_LAYER = -4
+_C.TRAIN.KD.BEGIN_LAYER = -2
 # Kd for logit loss
 _C.TRAIN.KD.CLS_LOSS = None
 # Kd for Transformer layer loss
 _C.TRAIN.KD.REG_LOSS = None
+# Teacher state dict
+_C.TRAIN.KD.TEACHER_PATH = None
 
 # -----------------------------------------------------------------------------
 # Testing settings
@@ -202,7 +204,7 @@ def update_config_by_args(config: CN, args):
     if args.model_type:
         config.MODEL.TYPE = args.model_type
         # microsoft/DeBERTa-base-mnli -> deberta-base-mnli
-        config.MODEL_NAME = config.MODEL.TYPE.split('/')[-1].lower()
+        config.MODEL.NAME = config.MODEL.TYPE.split('/')[-1].lower()
     if args.cls_dropout:
         config.MODEL.CLS_DROPOUT = args.cls_dropout
     if args.use_slow_tokenizer:
@@ -277,6 +279,8 @@ def update_config_by_args(config: CN, args):
             config.TRAIN.KD.CLS_LOSS = args.kd_cls_loss
         if args.kd_reg_loss:
             config.TRAIN.KD.REG_LOSS = args.kd_reg_loss
+        if args.teacher_path:
+            config.TRAIN.KD.TEACHER_PATH = args.teacher_path
 
     if args.debug:
         config.DEBUG = True
