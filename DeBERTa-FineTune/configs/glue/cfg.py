@@ -145,6 +145,7 @@ _C.PRUNE.GROUP_SIZE = 64
 _C.PRUNE.FREQUENCY = 100
 _C.PRUNE.FIXED_MASK = None
 _C.PRUNE.MASK = None
+_C.PRUNE.SPARSE_STEPS = None
 
 # -------------------------------------------------------------------------
 
@@ -275,6 +276,8 @@ def update_config_by_args(config: CN, args):
         config.PRUNE.FIXED_MASK = args.fixed_mask
     if args.mask:
         config.PRUNE.MASK = args.mask
+    if args.sparse_steps:
+        config.PRUNE.SPARSE_STEPS = args.sparse_steps
     
     if args.kd_on:
         config.TRAIN.KD.ON = args.kd_on

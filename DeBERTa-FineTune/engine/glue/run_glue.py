@@ -187,6 +187,7 @@ def parse_args():
     parser.add_argument('--aug_train', action='store_true')
     parser.add_argument('--pred_distill', action='store_true')
     parser.add_argument('--temperature', type=float)
+    parser.add_argument('--sparse_steps', type=int, help='total sparse steps, default is the training steps')
     parser.add_argument('--prune_sparsity',type=float, help='sparsity rate')
     parser.add_argument('--prune_deploy_device',type=str,
                         help='also known as balance. options none, fix=asic, fpga')
@@ -537,7 +538,7 @@ if __name__ == '__main__':
         pruner = Prune(
             model=accelerator.unwrap_model(model), 
             pretrain_step=0,
-            sparse_step=num_train_steps,
+            sparse_step=cfg.PRUNE.SPARSE_STEPS or num_train_steps,
             frequency=cfg.PRUNE.FREQUENCY,
             prune_dict=prune_dict,
             restore_sparsity=False,
@@ -571,16 +572,17 @@ if __name__ == '__main__':
                       optimizer, lr_scheduler, cfg, logger, epoch, progress_bar,
                       pruner=pruner, teacher=teacher, kd_cls_loss=kd_logit_loss, kd_reg_loss=kd_layer_loss)
 
-        if (not epoch % cfg.SAVE_FREQ) or (epoch == cfg.TRAIN.EPOCHS - 1):
-            # Only main process will save checkpoint
-            if accelerator.is_local_main_process:
-                checkpoint = save_checkpoint(
-                    log_dir, accelerator.unwrap_model(model), 
-                    accelerator.unwrap_model(optimizer), lr_scheduler, epoch, 
-                    accelerator.unwrap_model(model).config, best_val_results,
-                    tokenizer=tokenizer, accelerator=accelerator
-                )
-                logger.info(f"=> Checkpoint '{checkpoint}' saved\n")
+        # TODO: for debugging
+        # if (not epoch % cfg.SAVE_FREQ) or (epoch == cfg.TRAIN.EPOCHS - 1):
+        #     # Only main process will save checkpoint
+        #     if accelerator.is_local_main_process:
+        #         checkpoint = save_checkpoint(
+        #             log_dir, accelerator.unwrap_model(model), 
+        #             accelerator.unwrap_model(optimizer), lr_scheduler, epoch, 
+        #             accelerator.unwrap_model(model).config, best_val_results,
+        #             tokenizer=tokenizer, accelerator=accelerator
+        #         )
+        #         logger.info(f"=> Checkpoint '{checkpoint}' saved\n")
 
         # Eval
         accelerator.wait_for_everyone()
@@ -592,37 +594,38 @@ if __name__ == '__main__':
                 epoch, metric_computor, is_regression, teacher_mode=True
             )
 
-        if cfg.DATA.TASK_NAME.lower() in ('mnli', 'qnli', 'rte', 'sst-2', 'wnli'):
-            if val_results['accuracy'] > best_val_results['accuracy']:
-                # Reset accumulate bad performance step
-                accumulate_steps = 0
+        # TODO: for debugging
+        # if cfg.DATA.TASK_NAME.lower() in ('mnli', 'qnli', 'rte', 'sst-2', 'wnli'):
+        #     if val_results['accuracy'] > best_val_results['accuracy']:
+        #         # Reset accumulate bad performance step
+        #         accumulate_steps = 0
 
-                # Only main process will save checkpoint
-                if accelerator.is_local_main_process:
-                    best_val_results['accuracy'] = val_results['accuracy']
-                    best_checkpoint = save_checkpoint(
-                        best_checkpoint_dir, accelerator.unwrap_model(model), 
-                        accelerator.unwrap_model(optimizer), lr_scheduler, 
-                        epoch, accelerator.unwrap_model(model).config, 
-                        best_val_results, tokenizer=tokenizer, accelerator=accelerator
-                    )
-                    logger.info(f"\n=> Best checkpoint '{best_checkpoint}' saved\n")
-            else:
-                # Count bad performance step
-                accumulate_steps += 1
+        #         # Only main process will save checkpoint
+        #         if accelerator.is_local_main_process:
+        #             best_val_results['accuracy'] = val_results['accuracy']
+        #             best_checkpoint = save_checkpoint(
+        #                 best_checkpoint_dir, accelerator.unwrap_model(model), 
+        #                 accelerator.unwrap_model(optimizer), lr_scheduler, 
+        #                 epoch, accelerator.unwrap_model(model).config, 
+        #                 best_val_results, tokenizer=tokenizer, accelerator=accelerator
+        #             )
+        #             logger.info(f"\n=> Best checkpoint '{best_checkpoint}' saved\n")
+        #     else:
+        #         # Count bad performance step
+        #         accumulate_steps += 1
             
-            if cfg.TRAIN.KD.ON:
-                logger.info(
-                    f"\n[Epoch{epoch}] Gap between teacher & student:\n"
-                    f"\tAcc: {teacher_val_results['accuracy'] - val_results['accuracy']}\n"
-                )
-        else:
-            pass
+        #     if cfg.TRAIN.KD.ON:
+        #         logger.info(
+        #             f"\n[Epoch{epoch}] Gap between teacher & student:\n"
+        #             f"\tAcc: {teacher_val_results['accuracy'] - val_results['accuracy']}\n"
+        #         )
+        # else:
+        #     pass
         
-        if cfg.TRAIN.EARLY_STOP and accumulate_steps > cfg.TRAIN.MAX_EARLY_STOP_EPOCHS:
-            logger.info(f"\n=> Early stopping.. "
-                        f"we cannot get better performance by {cfg.TRAIN.MAX_EARLY_STOP_EPOCHS} continuous epochs")
-            break
+        # if cfg.TRAIN.EARLY_STOP and accumulate_steps > cfg.TRAIN.MAX_EARLY_STOP_EPOCHS:
+        #     logger.info(f"\n=> Early stopping.. "
+        #                 f"we cannot get better performance by {cfg.TRAIN.MAX_EARLY_STOP_EPOCHS} continuous epochs")
+        #     break
 
     total = time.time() - begin
     total_str = str(datetime.timedelta(seconds=total))

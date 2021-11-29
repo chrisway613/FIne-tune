@@ -106,7 +106,7 @@ class Trainer:
                 logger.info(
                     f'Train Epoch[{epoch}/{config.TRAIN.EPOCHS}] Step[{step}/{len(dataloader)}]\t'
                     f'lr: {lr:.10f}\t'
-                    f'batch time: {batch_time:.0f}s\t'
+                    f'batch time: {batch_time:.4f}s\t'
                     f'loss raw: {loss_raw.item():.8f}\t'
                     f'loss(w gradient accumulate): {loss.item():.8f}\t'
                     f'{kd_loss_info}\t'
