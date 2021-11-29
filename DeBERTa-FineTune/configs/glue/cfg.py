@@ -64,7 +64,8 @@ _C.TRAIN.EPOCHS = 6
 _C.TRAIN.START_EPOCH = 0
 _C.TRAIN.WARMUP_STEPS = 50
 _C.TRAIN.WEIGHT_DECAY = 1e-2
-_C.TRAIN.MAX_EARLY_STOP_EPOCHS = 10
+_C.TRAIN.EARLY_STOP = False
+_C.TRAIN.MAX_EARLY_STOP_EPOCHS = 20
 
 _C.TRAIN.LR = 1e-5
 _C.TRAIN.MIN_LR = 0.
@@ -99,11 +100,13 @@ _C.TRAIN.KD = CN()
 # Whether to use kd
 _C.TRAIN.KD.ON = False
 # Decide from which Transformer layer we will kd
-_C.TRAIN.KD.BEGIN_LAYER = -4
+_C.TRAIN.KD.BEGIN_LAYER = -2
 # Kd for logit loss
 _C.TRAIN.KD.CLS_LOSS = None
 # Kd for Transformer layer loss
 _C.TRAIN.KD.REG_LOSS = None
+# Teacher state dict
+_C.TRAIN.KD.TEACHER_PATH = None
 
 # -----------------------------------------------------------------------------
 # Testing settings
@@ -202,7 +205,7 @@ def update_config_by_args(config: CN, args):
     if args.model_type:
         config.MODEL.TYPE = args.model_type
         # microsoft/DeBERTa-base-mnli -> deberta-base-mnli
-        config.MODEL_NAME = config.MODEL.TYPE.split('/')[-1].lower()
+        config.MODEL.NAME = config.MODEL.TYPE.split('/')[-1].lower()
     if args.cls_dropout:
         config.MODEL.CLS_DROPOUT = args.cls_dropout
     if args.use_slow_tokenizer:
@@ -230,6 +233,8 @@ def update_config_by_args(config: CN, args):
         config.TRAIN.EPOCHS = args.epochs
     if args.warmup_steps:
         config.TRAIN.WARMUP_STEPS = args.warmup_steps
+    if args.early_stop:
+        config.TRAIN.EARLY_STOP = args.early_stop
     if args.max_early_stop_epochs:
         config.TRAIN.MAX_EARLY_STOP_EPOCHS = args.max_early_stop_epochs
 
@@ -277,6 +282,8 @@ def update_config_by_args(config: CN, args):
             config.TRAIN.KD.CLS_LOSS = args.kd_cls_loss
         if args.kd_reg_loss:
             config.TRAIN.KD.REG_LOSS = args.kd_reg_loss
+        if args.teacher_path:
+            config.TRAIN.KD.TEACHER_PATH = args.teacher_path
 
     if args.debug:
         config.DEBUG = True
