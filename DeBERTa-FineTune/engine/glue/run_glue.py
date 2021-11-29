@@ -165,6 +165,7 @@ def parse_args():
     parser.add_argument(
         "--warmup_steps", type=int, help="Number of steps for the warmup in the lr scheduler."
     )
+    parser.add_argument('--early_stop', action='store_true', help='whether to use early stopping')
     parser.add_argument('--max_early_stop_epochs', type=int,
                         help="Early stop when we cannot get better performance by continuous epochs of this value")
 
@@ -366,7 +367,7 @@ if __name__ == '__main__':
         #     if getattr(teacher, 'num_labels', None) != num_labels:
         #         teacher.num_labels = num_labels
         #         teacher.config.num_labels = num_labels
-            
+
         #     in_features, bias = teacher.classifier.in_features, teacher.classifier.bias
         #     teacher.classifier = nn.Linear(in_features, num_labels, bias=bias is not None)
         
@@ -618,7 +619,7 @@ if __name__ == '__main__':
         else:
             pass
         
-        if accumulate_steps > cfg.TRAIN.MAX_EARLY_STOP_EPOCHS:
+        if cfg.TRAIN.EARLY_STOP and accumulate_steps > cfg.TRAIN.MAX_EARLY_STOP_EPOCHS:
             logger.info(f"\n=> Early stopping.. "
                         f"we cannot get better performance by {cfg.TRAIN.MAX_EARLY_STOP_EPOCHS} continuous epochs")
             break

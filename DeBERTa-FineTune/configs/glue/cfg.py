@@ -64,7 +64,8 @@ _C.TRAIN.EPOCHS = 6
 _C.TRAIN.START_EPOCH = 0
 _C.TRAIN.WARMUP_STEPS = 50
 _C.TRAIN.WEIGHT_DECAY = 1e-2
-_C.TRAIN.MAX_EARLY_STOP_EPOCHS = 10
+_C.TRAIN.EARLY_STOP = False
+_C.TRAIN.MAX_EARLY_STOP_EPOCHS = 20
 
 _C.TRAIN.LR = 1e-5
 _C.TRAIN.MIN_LR = 0.
@@ -232,6 +233,8 @@ def update_config_by_args(config: CN, args):
         config.TRAIN.EPOCHS = args.epochs
     if args.warmup_steps:
         config.TRAIN.WARMUP_STEPS = args.warmup_steps
+    if args.early_stop:
+        config.TRAIN.EARLY_STOP = args.early_stop
     if args.max_early_stop_epochs:
         config.TRAIN.MAX_EARLY_STOP_EPOCHS = args.max_early_stop_epochs
 

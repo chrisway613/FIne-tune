@@ -6,7 +6,7 @@ EPOCHS=120
 WARMUP_STEPS=100
 LR=1e-5
 WEIGHT_DECAY=0
-PRUNE_FREQ=200
+PRUNE_FREQ=100
 TEACHER_PATH='outputs/rte/deberta-base-mnli/11-26-17-48/best/epoch4.pth'
 NOHUP_OUTPUT=outputs/$TASK/$MODEL/ep$EPOCHS-lr$LR-wdecay$WEIGHT_DECAY-pfreq$PRUNE_FREQ-kd.log
 
