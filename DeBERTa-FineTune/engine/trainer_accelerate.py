@@ -10,11 +10,12 @@ from utils.misc import get_grad_norm
 
 class Trainer:
     @classmethod
-    def train(cls, accelerator, model, dataloader, optimizer, lr_scheduler, 
-              config, logger, epoch, progress_bar, pruner=None, teacher=None, 
+    def train(cls, accelerator, model, dataloader, optimizer, lr_scheduler, metric_computor,
+              config, logger, epoch, progress_bar, is_regression=False, pruner=None, teacher=None, 
               kd_cls_loss=None, kd_reg_loss=None):
         model.train()
 
+        batch_loss = []
         start = batch_start = time.time()
         for step, batch in enumerate(dataloader):
             # Kd
@@ -59,6 +60,7 @@ class Trainer:
             
             # Gradient accumulation
             loss = loss_raw / config.TRAIN.GRADIENT_ACCUMULATION_STEPS
+            batch_loss.append(loss.item())
             # Backward
             accelerator.backward(loss)
             # Clip gradient(optional)
@@ -90,6 +92,16 @@ class Trainer:
                         layer_sparse_rate, total_sparse_rate = pruner.sparsity()
                         logger.info(f'\nweight sparsity: {total_sparse_rate}\n'
                                     f'layer weight sparsity:\n{layer_sparse_rate}\n')
+                    
+                    # pruner.prune()
+            
+            # For eavaluation
+            predictions = outputs.logits.argmax(dim=-1) \
+                if not is_regression else outputs.logits.squeeze()
+            metric_computor.add_batch(
+                predictions=accelerator.gather(predictions),
+                references=accelerator.gather(batch["labels"]),
+            )
             
             # If un-comment below, it is the max batch time overall processes
             # accelerator.wait_for_everyone()
@@ -106,7 +118,7 @@ class Trainer:
                 logger.info(
                     f'Train Epoch[{epoch}/{config.TRAIN.EPOCHS}] Step[{step}/{len(dataloader)}]\t'
                     f'lr: {lr:.10f}\t'
-                    f'batch time: {batch_time:.4f}s\t'
+                    f'batch time: {batch_time:.2f}s\t'
                     f'loss raw: {loss_raw.item():.8f}\t'
                     f'loss(w gradient accumulate): {loss.item():.8f}\t'
                     f'{kd_loss_info}\t'
@@ -120,23 +132,30 @@ class Trainer:
                 del logit_loss, hs_loss, attn_loss
             
             batch_start = time.time()
-        
         epoch_time = time.time() - start
-        logger.info(f"=> Epoch{epoch} training takes time: {datetime.timedelta(seconds=epoch_time)}\n")
+
+        train_loss = sum(batch_loss) / len(batch_loss)
+        train_results = metric_computor.compute()
+        logger.info(f"\n  Epoch{epoch} train loss: {train_loss:.6f} train metric: {train_results} training takes time: {datetime.timedelta(seconds=epoch_time)}\n")
 
         torch.cuda.empty_cache()
+
+        return train_loss, train_results
+
 
     @classmethod
     def val(cls, accelerator, model, dataloader, config, logger, 
             epoch, metric_computor, is_regression, teacher_mode=False):
         model.eval()
         
+        batch_loss = []
         start = batch_start = time.time()
         for step, batch in enumerate(dataloader):
             with torch.no_grad():
                 # loss, logits, hidden_states, attentions
                 outputs = model(**batch)
                 loss = outputs.loss
+                batch_loss.append(loss.item())
 
                 predictions = outputs.logits.argmax(dim=-1) \
                     if not is_regression else outputs.logits.squeeze()
@@ -154,21 +173,22 @@ class Trainer:
                 logger.info(
                     f'\n{"[Teacher]" if teacher_mode else ""}  '
                     f'Val Epoch[{epoch}/{config.TRAIN.EPOCHS}] Step[{step}/{len(dataloader)}]\t'
-                    f'batch time: {batch_time:.4f}s\t'
+                    f'batch time: {batch_time:.2f}s\t'
                     f'loss: {loss.item():.8f}\t'
                     f'memory used: {memory_used:.0f}MB\n'
                 )
 
             batch_start = time.time()
-        
         epoch_time = time.time() - start
+
+        val_loss = sum(batch_loss) / len(batch_loss)
         val_results = metric_computor.compute()
         logger.info(
             f"\n{'[Teacher]' if teacher_mode else ''}  "
-            f"Epoch{epoch} metric: {val_results} "
+            f"Epoch{epoch} val loss: {val_loss:.6f} val metric: {val_results} "
             f"validation takes time: {datetime.timedelta(seconds=epoch_time)}\t"
         )
 
         torch.cuda.empty_cache()
         
-        return val_results
+        return val_loss, val_results

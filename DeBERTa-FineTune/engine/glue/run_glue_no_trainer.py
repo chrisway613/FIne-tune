@@ -152,6 +152,8 @@ def parse_args():
         "--hub_model_id", type=str, help="The name of the repository to keep in sync with the local `output_dir`."
     )
     parser.add_argument("--hub_token", type=str, help="The token to use to push to the Model Hub.")
+
+    parser.add_argument("--debug", action="store_true")
     
     args = parser.parse_args()
 
@@ -268,8 +270,12 @@ def main():
     model = AutoModelForSequenceClassification.from_pretrained(
         args.model_name_or_path,
         from_tf=bool(".ckpt" in args.model_name_or_path),
-        config=config,
+        config=config
     )
+    
+    # TODO: For debugging
+    # from transformers.models.deberta.modeling_deberta import DebertaForSequenceClassification
+    # model = DebertaForSequenceClassification(config)
 
     # Preprocessing the datasets
     if args.task_name is not None:
@@ -342,9 +348,12 @@ def main():
             desc="Running tokenizer on dataset",
         )
 
-    train_dataset = processed_datasets["train"].select(range(256))
-    eval_dataset = processed_datasets["validation_matched" if args.task_name == "mnli" else "validation"].select(range(256))
-
+    train_dataset = processed_datasets["train"]
+    eval_dataset = processed_datasets["validation_matched" if args.task_name == "mnli" else "validation"]
+    if args.debug:
+        train_dataset = train_dataset.select(range(args.per_device_train_batch_size * accelerator.num_processes * 16))
+        eval_dataset = eval_dataset.select(range(args.per_device_train_batch_size * accelerator.num_processes * 16))
+    
     # Log a few random samples from the training set:
     for index in random.sample(range(len(train_dataset)), 3):
         logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
@@ -435,9 +444,18 @@ def main():
                 optimizer.zero_grad()
                 progress_bar.update(1)
                 completed_steps += 1
+            
+            predictions = outputs.logits.argmax(dim=-1) if not is_regression else outputs.logits.squeeze()
+            metric.add_batch(
+                predictions=accelerator.gather(predictions),
+                references=accelerator.gather(batch["labels"]),
+            )
 
             if completed_steps >= args.max_train_steps:
                 break
+        
+        train_metric = metric.compute()
+        logger.info(f"train epoch: {epoch} metric: {train_metric}")
 
         model.eval()
         for step, batch in enumerate(eval_dataloader):
@@ -449,7 +467,7 @@ def main():
             )
 
         eval_metric = metric.compute()
-        logger.info(f"epoch {epoch}: {eval_metric}")
+        logger.info(f"eval epoch: {epoch} metric: {eval_metric}")
 
         if args.push_to_hub and epoch < args.num_train_epochs - 1:
             accelerator.wait_for_everyone()
