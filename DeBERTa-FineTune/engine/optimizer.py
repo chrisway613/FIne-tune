@@ -40,7 +40,7 @@ def build_optimizer(model, config):
         optimizer = ChildTuningAdamW(
             params, lr=config.TRAIN.LR, betas=config.TRAIN.OPTIMIZER.BETAS,
             eps=config.TRAIN.OPTIMIZER.EPS, weight_decay=config.TRAIN.WEIGHT_DECAY,
-            reserve_p=config.TRAIN.OPTIMIZER.CHILD_TUNING_ADAMW_RESERVE_P,
+            reserve_p=config.TRAIN.OPTIMIZER.CHILD_TUNING_ADAMW_RESERVE_P, 
             mode=config.TRAIN.OPTIMIZER.CHILD_TUNING_ADAMW_MODE
         )
     else:
