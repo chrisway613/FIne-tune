@@ -19,14 +19,12 @@
         --prune_frequency [PRUNE_FREQUENCY] --kd_on..
 """
 
-from ast import parse
 import os
 import time
 import random
 import argparse
 import datetime
 import datasets
-from torch.cuda import get_arch_list
 import transformers
 
 import torch
@@ -41,12 +39,10 @@ from datasets import load_metric
 from accelerate import Accelerator, DistributedType
 
 from transformers import (
-    # AutoConfig,
     AutoTokenizer,
     AutoModelForSequenceClassification,
-    SchedulerType,
     default_data_collator,
-    DataCollatorWithPadding,
+    DataCollatorWithPadding
 )
 from transformers.utils.versions import require_version
 
@@ -61,6 +57,7 @@ sys.path.append(os.path.join(BASE_DIR, '..'))
 sys.path.append(os.path.join(BASE_DIR, '..', '..'))
 
 from utils.logger import Logger
+from utils.plot import plot_line
 from utils.seed import setup_seed, reseed_workers_fn
 from utils.dist import kill_all_process
 from utils.misc import auto_resume_helper, load_checkpoint, save_checkpoint
@@ -75,6 +72,7 @@ from trainer_accelerate import Trainer
 from configs.glue.cfg import get_config, TASK_TO_KEYS
 
 from pruner import Prune
+# from bbcs_projection_v3_linear import Prune
 from loss import loss_dict
 
 
@@ -147,10 +145,12 @@ def parse_args():
     )
     parser.add_argument('--linear_scaled_lr', action='store_true',
                         help='linear scale the learning rate according to total batch size')
-    
+    parser.add_argument("--optimizer", type=str, help='optimizer name')
+    parser.add_argument("--child_tuning_adamw_mode", type=str,
+                        help='Child Tuning AdamW optimizer mode, choices of [None, "F", "D"]')
     parser.add_argument(
         "--lr_scheduler_type",
-        type=SchedulerType,
+        type=str,
         help="The scheduler type to use.",
         choices=["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"],
     )
@@ -229,7 +229,8 @@ if __name__ == '__main__':
 
     '''ii. Set logger'''
     now = datetime.datetime.now().strftime("%m-%d-%H-%M")
-    log_dir = os.path.join(cfg.OUTPUT, now)
+    sub_dir = f"ep{cfg.TRAIN.EPOCHS}-lr{cfg.TRAIN.LR}-prune{cfg.PRUNE.PRUNING}-pfreq{cfg.PRUNE.FREQUENCY}-psteps{cfg.PRUNE.SPARSE_STEPS}-sparsity{cfg.PRUNE.SPARSITY}"
+    log_dir = os.path.join(cfg.OUTPUT, sub_dir, now)
     logger = Logger(log_dir, dist_rank=cfg.LOCAL_RANK, name=cfg.MODEL.NAME)
     logger.info(f"=> Log info to file: '{logger.log_file}'")
 
@@ -305,15 +306,25 @@ if __name__ == '__main__':
 
     # model = DebertaForSequenceClassification._from_config(model_config)
     
+    '-------------------------------------------------------------------------------------------------'
+    # TODO: for debugging
+    # from transformers import AutoConfig
+
     # auto_config = AutoConfig.from_pretrained(cfg.MODEL.TYPE, 
     #                                          num_labels=num_labels, finetuning_task=cfg.DATA.TASK_NAME)
     # logger.info(f"\n=> auto_config type:{type(auto_config)}\n content:{auto_config}\n")
+
+    # from transformers.models.deberta.modeling_deberta import DebertaForSequenceClassification
+
+    # model = DebertaForSequenceClassification(auto_config)
+    '--------------------------------------------------------------------------------------------------'
 
     model = AutoModelForSequenceClassification.from_pretrained(
         cfg.MODEL.TYPE,
         # TODO: may occur error when use another one down-stream task pretrained weight
         # config=auto_config
     )
+    
     tokenizer = AutoTokenizer.from_pretrained(cfg.MODEL.TYPE, use_fast=not cfg.USE_SLOW_TOKENIZER)
     used = time.time() - s
 
@@ -412,8 +423,8 @@ if __name__ == '__main__':
         if cfg.DATA.TASK_NAME == 'mnli' else 'validation']
     
     if cfg.DEBUG:
-        num_train_samples = cfg.DATA.TRAIN_BATCH_SIZE * accelerator.num_processes
-        num_val_samples = cfg.DATA.VAL_BATCH_SIZE * accelerator.num_processes
+        num_train_samples = cfg.DATA.TRAIN_BATCH_SIZE * accelerator.num_processes * 16
+        num_val_samples = cfg.DATA.VAL_BATCH_SIZE * accelerator.num_processes * 16
 
         train_data = train_data.select(range(num_train_samples))
         val_data = val_data.select(range(num_val_samples))
@@ -467,6 +478,9 @@ if __name__ == '__main__':
 
         cfg.freeze()
     optimizer = build_optimizer(model, cfg)
+    logger.info(f"=> Build optimizer: {str(optimizer)}\n")
+    if cfg.TRAIN.OPTIMIZER.NAME == 'child_tuning_adamw' and cfg.TRAIN.OPTIMIZER.CHILD_TUNING_ADAMW_MODE == 'D':
+        optimizer.set_grad_mask(model=model, dataloader=train_dataloader, max_grad_norm=1.)
 
     # In multi-process, each will get its own individual data
     # (cuz the length of dataloader would be shorter than the original)
@@ -512,11 +526,11 @@ if __name__ == '__main__':
     logger.info("***** Start Training *****")
     logger.info(f"  Num train examples(all devices) = {len(train_data)}")
     logger.info(f"  Num val examples(all devices) = {len(val_data)}")
-    logger.info(f"  Num Epochs = {cfg.TRAIN.EPOCHS}")
-    logger.info(f"  train batch size per device = {cfg.DATA.TRAIN_BATCH_SIZE}")
+    logger.info(f"  Num epochs = {cfg.TRAIN.EPOCHS}")
+    logger.info(f"  Num train steps = {num_train_steps}")
+    logger.info(f"  Train batch size per device = {cfg.DATA.TRAIN_BATCH_SIZE}")
     logger.info(f"  Gradient Accumulation steps = {cfg.TRAIN.GRADIENT_ACCUMULATION_STEPS}")
-    logger.info(f"  Total train batch size \
-        (batch size per device x num devices x gradient accumulation steps) = {total_batch_size}\n")
+    logger.info(f"  Total train batch size (batch size per device x num devices x gradient accumulation steps) = {total_batch_size}\n")
 
     '''x. Pruner setting'''
     if cfg.PRUNE.PRUNING:
@@ -549,13 +563,31 @@ if __name__ == '__main__':
             fixed_mask=cfg.PRUNE.FIXED_MASK,
             mask=cfg.PRUNE.MASK
         )
+        
+        # pruner = Prune(
+        #     model,
+        #     group_size=64,
+        #     topk=8,
+        #     pvalue_initial=1,
+        #     pvalue_final=3,
+        #     pvalue_update_freq=5,
+        #     budget_initial=.25,
+        #     budget_final=.25,
+        #     budget_update_freq=50,
+        #     pvalue_warmup_steps=num_train_steps,
+        #     budget_multiplier=.25,
+        #     warmup_budget_update_freq=5,
+        #     mask_update_freq=5,
+        #     num_steps=num_train_steps,
+        #     log_path=log_dir
+        # )
     else:
         pruner = None
 
     '''xi. Training'''
     logger.info(f"=> Start training\n")
 
-    best_checkpoint_dir = os.path.join(log_dir, 'best')
+    best_checkpoint_dir = os.path.join(log_dir, 'best_checkpoint')
     os.makedirs(best_checkpoint_dir, exist_ok=True)
 
     # Only show the progress bar once on each machine.
@@ -565,46 +597,51 @@ if __name__ == '__main__':
 
     accelerator.wait_for_everyone()
 
+    # We'll plot these items when training finished
+    val_epoch_loss, val_epoch_metric = [], []
+    train_epoch_loss, train_epoch_metric = [], []
+
     # 'accumulate_steps' for early stopping
     begin, accumulate_steps = time.time(), 0
     for epoch in range(cfg.TRAIN.START_EPOCH, cfg.TRAIN.EPOCHS):
-        Trainer.train(accelerator, model, train_dataloader,
-                      optimizer, lr_scheduler, cfg, logger, epoch, progress_bar,
-                      pruner=pruner, teacher=teacher, kd_cls_loss=kd_logit_loss, kd_reg_loss=kd_layer_loss)
-
-        if (not epoch % cfg.SAVE_FREQ) or (epoch == cfg.TRAIN.EPOCHS - 1):
-            # Only main process will save checkpoint
-            if accelerator.is_local_main_process:
-                checkpoint = save_checkpoint(
-                    log_dir, accelerator.unwrap_model(model), 
-                    accelerator.unwrap_model(optimizer), lr_scheduler, epoch, 
-                    accelerator.unwrap_model(model).config, best_val_results,
-                    tokenizer=tokenizer, accelerator=accelerator
-                )
-                logger.info(f"=> Checkpoint '{checkpoint}' saved\n")
+        train_loss, train_resutls = Trainer.train(
+            accelerator, model, train_dataloader, optimizer, lr_scheduler, 
+            metric_computor, cfg, logger, epoch, progress_bar, is_regression=is_regression,
+            pruner=pruner, teacher=teacher, kd_cls_loss=kd_logit_loss, kd_reg_loss=kd_layer_loss
+        )
+        train_epoch_loss.append(train_loss)
 
         # Eval
         accelerator.wait_for_everyone()
-        val_results = Trainer.val(accelerator, model, val_dataloader, cfg, logger, 
-                                  epoch, metric_computor, is_regression)
+        val_loss, val_results = Trainer.val(
+            accelerator, model, val_dataloader, cfg, logger, 
+            epoch, metric_computor, is_regression
+        )
+        val_epoch_loss.append(val_loss)
+
         if cfg.TRAIN.KD.ON:
-            teacher_val_results = Trainer.val(
+            teacher_val_loss, teacher_val_results = Trainer.val(
                 accelerator, teacher, val_dataloader, cfg, logger, 
                 epoch, metric_computor, is_regression, teacher_mode=True
             )
 
         if cfg.DATA.TASK_NAME.lower() in ('mnli', 'qnli', 'rte', 'sst-2', 'wnli'):
+            val_epoch_metric.append(val_results['accuracy'])
+            train_epoch_metric.append(train_resutls['accuracy'])
+
+            # Save the checkpoint which improved the performance
             if val_results['accuracy'] > best_val_results['accuracy']:
                 # Reset accumulate bad performance step
                 accumulate_steps = 0
 
                 # Only main process will save checkpoint
-                if accelerator.is_local_main_process:
+                if accelerator.is_local_main_process and not cfg.DEBUG:
+                    unwrap_model = accelerator.unwrap_model(model)
                     best_val_results['accuracy'] = val_results['accuracy']
                     best_checkpoint = save_checkpoint(
-                        best_checkpoint_dir, accelerator.unwrap_model(model), 
+                        best_checkpoint_dir, unwrap_model, 
                         accelerator.unwrap_model(optimizer), lr_scheduler, 
-                        epoch, accelerator.unwrap_model(model).config, 
+                        epoch, unwrap_model.config, 
                         best_val_results, tokenizer=tokenizer, accelerator=accelerator
                     )
                     logger.info(f"\n=> Best checkpoint '{best_checkpoint}' saved\n")
@@ -620,6 +657,7 @@ if __name__ == '__main__':
         else:
             pass
         
+        # Early stop
         if cfg.TRAIN.EARLY_STOP and accumulate_steps > cfg.TRAIN.MAX_EARLY_STOP_EPOCHS:
             logger.info(f"\n=> Early stopping.. "
                         f"we cannot get better performance by {cfg.TRAIN.MAX_EARLY_STOP_EPOCHS} continuous epochs")
@@ -628,6 +666,24 @@ if __name__ == '__main__':
     total = time.time() - begin
     total_str = str(datetime.timedelta(seconds=total))
     logger.info(f"=> Training finished! time used: {total_str}\n")
+
+    '''Plot training items'''
+    plot_dir = os.path.join(log_dir, 'view')
+    epoch_range = range(cfg.TRAIN.START_EPOCH + 1, cfg.TRAIN.EPOCHS + 1)
+    plot_line(epoch_range, train_epoch_loss, x_val=epoch_range, y_val=val_epoch_loss, out_dir=plot_dir, name='loss')
+    plot_line(epoch_range, train_epoch_metric, x_val=epoch_range, y_val=val_epoch_metric, item='Acc', out_dir=plot_dir, name='acc')
+
+    # Save the last checkpoint
+    # Only main process will save checkpoint
+    if accelerator.is_local_main_process:
+        unwrap_model = accelerator.unwrap_model(model)
+        checkpoint = save_checkpoint(
+            log_dir, unwrap_model, 
+            accelerator.unwrap_model(optimizer), lr_scheduler, epoch, 
+            unwrap_model.config, best_val_results,
+            tokenizer=tokenizer, accelerator=accelerator
+        )
+        logger.info(f"=>Final checkpoint '{checkpoint}' saved\n")
 
     # Final evaluation on mismatched validation set
     if cfg.DATA.TASK_NAME.lower() == "mnli":

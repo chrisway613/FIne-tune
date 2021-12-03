@@ -81,7 +81,17 @@ _C.TRAIN.AUTO_RESUME = False
 
 # LR scheduler
 _C.TRAIN.LR_SCHEDULER = CN()
+'''
+"linear"
+"cosine"
+"cosine_with_restarts"
+"polynomial"
+"constant"
+"constant_with_warmup"
+'''
 _C.TRAIN.LR_SCHEDULER.TYPE = 'linear'
+# The number of hard restarts, for 'cosine_with_restarts' scheduler
+_C.TRAIN.LR_SCHEDULER.NUM_CYCLES = 3
 # Epoch interval to decay LR, used in StepLRScheduler
 _C.TRAIN.LR_SCHEDULER.DECAY_EPOCHS = 1
 # LR decay rate, used in StepLRScheduler
@@ -89,11 +99,13 @@ _C.TRAIN.LR_SCHEDULER.DECAY_RATE = 0.1
 
 # Optimizer
 _C.TRAIN.OPTIMIZER = CN()
-_C.TRAIN.OPTIMIZER.NAME = 'Adam'
+_C.TRAIN.OPTIMIZER.NAME = 'AdamW'
 # Optimizer Epsilon
 _C.TRAIN.OPTIMIZER.EPS = 1e-6
 # Optimizer Betas
 _C.TRAIN.OPTIMIZER.BETAS = (0.9, 0.999)
+_C.TRAIN.OPTIMIZER.CHILD_TUNING_ADAMW_MODE = 'F'
+_C.TRAIN.OPTIMIZER.CHILD_TUNING_ADAMW_RESERVE_P = .3
 
 # Knowledge distillation
 _C.TRAIN.KD = CN()
@@ -218,7 +230,10 @@ def update_config_by_args(config: CN, args):
         config.TRAIN.LR = args.lr
     if args.linear_scaled_lr:
         config.TRAIN.LINEAR_SCALED_LR = args.linear_scaled_lr
-    
+    if args.optimizer:
+        config.TRAIN.OPTIMIZER.NAME = args.optimizer
+        if args.optimizer == 'child_tuning_adamw' and args.child_tuning_adamw_mode:
+            config.TRAIN.OPTIMIZER.CHILD_TUNING_ADAMW_MODE = args.child_tuning_adamw_mode
     if args.lr_scheduler_type:
         config.TRAIN.LR_SCHEDULER.TYPE = args.lr_scheduler_type
 
@@ -265,7 +280,7 @@ def update_config_by_args(config: CN, args):
     if args.pruning:
         config.PRUNE.PRUNING = args.pruning
     if args.prune_sparsity:
-        config.PRUNE.SPARSITY = args.sparsity
+        config.PRUNE.SPARSITY = args.prune_sparsity
     if args.prune_deploy_device:
         config.PRUNE.DEPLOY_DEVICE = args.prune_deploy_device
     if args.prune_group_size:
