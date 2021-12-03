@@ -187,6 +187,7 @@ def parse_args():
     parser.add_argument('--aug_train', action='store_true')
     parser.add_argument('--pred_distill', action='store_true')
     parser.add_argument('--temperature', type=float)
+    parser.add_argument('--sparse_steps', type=int, help='total sparse steps, default is the training steps')
     parser.add_argument('--prune_sparsity',type=float, help='sparsity rate')
     parser.add_argument('--prune_deploy_device',type=str,
                         help='also known as balance. options none, fix=asic, fpga')
@@ -537,7 +538,7 @@ if __name__ == '__main__':
         pruner = Prune(
             model=accelerator.unwrap_model(model), 
             pretrain_step=0,
-            sparse_step=num_train_steps,
+            sparse_step=cfg.PRUNE.SPARSE_STEPS or num_train_steps,
             frequency=cfg.PRUNE.FREQUENCY,
             prune_dict=prune_dict,
             restore_sparsity=False,
