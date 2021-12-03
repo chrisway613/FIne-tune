@@ -672,7 +672,7 @@ if __name__ == '__main__':
     plot_dir = os.path.join(log_dir, 'view')
     epoch_range = range(cfg.TRAIN.START_EPOCH + 1, cfg.TRAIN.EPOCHS + 1)
     plot_line(epoch_range, train_epoch_loss, x_val=epoch_range, y_val=val_epoch_loss, out_dir=plot_dir, name='loss')
-    plot_line(epoch_range, train_epoch_metric, x_val=epoch_range, y_val=val_epoch_metric, out_dir=plot_dir, name='acc')
+    plot_line(epoch_range, train_epoch_metric, x_val=epoch_range, y_val=val_epoch_metric, item='Acc', out_dir=plot_dir, name='acc')
 
     # Save the last checkpoint
     # Only main process will save checkpoint
