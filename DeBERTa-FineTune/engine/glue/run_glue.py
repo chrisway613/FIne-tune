@@ -41,7 +41,6 @@ from accelerate import Accelerator, DistributedType
 from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
-    SchedulerType,
     default_data_collator,
     DataCollatorWithPadding
 )
