@@ -119,6 +119,7 @@ _C.TRAIN.KD.CLS_LOSS = None
 _C.TRAIN.KD.REG_LOSS = None
 # Teacher state dict
 _C.TRAIN.KD.TEACHER_PATH = None
+_C.TRAIN.KD.TEACHER_INIT = False
 
 # -----------------------------------------------------------------------------
 # Testing settings
@@ -302,6 +303,8 @@ def update_config_by_args(config: CN, args):
             config.TRAIN.KD.REG_LOSS = args.kd_reg_loss
         if args.teacher_path:
             config.TRAIN.KD.TEACHER_PATH = args.teacher_path
+        if args.teacher_init:
+            config.TRAIN.KD.TEACHER_INIT = args.teacher_init
 
     if args.debug:
         config.DEBUG = True

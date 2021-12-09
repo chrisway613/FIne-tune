@@ -15,7 +15,7 @@ class Trainer:
               kd_cls_loss=None, kd_reg_loss=None):
         model.train()
 
-        batch_loss = []
+        batch_loss, step_lr = [], []
         start = batch_start = time.time()
         for step, batch in enumerate(dataloader):
             # Kd
@@ -28,31 +28,29 @@ class Trainer:
                 # hidden_states, attns = outputs.hidden_states, outputs.attentions
                 hidden_states, attns, logits = outputs.hidden_states, outputs.attentions, outputs.logits
 
-                # Pay attention to set 'no_gread' for teacher forwarding
+                # Pay attention to set 'no_grad' for teacher forwarding
                 with torch.no_grad():
                     teacher_outputs = teacher(**batch, output_attentions=True, output_hidden_states=True)
                     # teacher_hidden_states, teacher_attns = \
                     #     teacher_outputs.hidden_states, teacher_outputs.attentions
-                    teacher_hidden_states, teacher_attns, teacher_logits = \
-                        teacher_outputs.hidden_states, teacher_outputs.attentions, \
-                            teacher_outputs.logits
+                    teacher_hidden_states, teacher_attns, teacher_logits = teacher_outputs.hidden_states, \
+                        teacher_outputs.attentions, teacher_outputs.logits
 
-                # Logits kd loss(ce)
-                # TODO: add logit loss if teacher has pretrained head
+                # Logits loss(ce)
                 logit_loss = kd_cls_loss(logits, teacher_logits)
-                # logit_loss = outputs.loss
-                # Hidden states kd loss(mse)
+
+                # Hidden states loss(mse)
                 hs_loss = 0.
                 for layer_hidden_state, teacher_layer_hidden_state in \
                     zip(hidden_states[config.TRAIN.KD.BEGIN_LAYER:], teacher_hidden_states[config.TRAIN.KD.BEGIN_LAYER:]):
                     hs_loss = hs_loss + kd_reg_loss(layer_hidden_state, teacher_layer_hidden_state)
-                # Attentions kd loss(mse)
+
+                # Attentions loss(mse)
                 attn_loss = 0.
                 for layer_attn, teacher_layer_attn in \
                     zip(attns[config.TRAIN.KD.BEGIN_LAYER:], teacher_attns[config.TRAIN.KD.BEGIN_LAYER:]):
                     attn_loss = attn_loss + kd_reg_loss(layer_attn, teacher_layer_attn)
                 
-                # loss_raw = hs_loss + attn_loss
                 loss_raw = logit_loss + hs_loss + attn_loss
             else:
                 outputs = model(**batch)
@@ -61,14 +59,19 @@ class Trainer:
             # Gradient accumulation
             loss = loss_raw / config.TRAIN.GRADIENT_ACCUMULATION_STEPS
             batch_loss.append(loss.item())
+            
             # Backward
             accelerator.backward(loss)
+
             # Clip gradient(optional)
             if config.TRAIN.CLIP_GRAD:
                 grad_norm = clip_grad_norm_(
                     accelerator.unwrap_model(model).parameters(), max_norm=config.TRAIN.CLIP_GRAD)
             else:
                 grad_norm = get_grad_norm(accelerator.unwrap_model(model).parameters())
+            
+            lr = optimizer.param_groups[0]['lr']
+            step_lr.append(lr)
 
             # Update parameters, lr, zero gradients, pruning(optional)
             if not (step + 1) % config.TRAIN.GRADIENT_ACCUMULATION_STEPS or step == len(dataloader) - 1:
@@ -108,7 +111,6 @@ class Trainer:
             batch_time = time.time() - batch_start
 
             if not step % config.PRINT_FREQ:
-                lr = optimizer.param_groups[0]['lr']
                 memory_used = max_memory_allocated() / (1024. ** 2)
                 kd_loss_info = '' if teacher is None else \
                     (f"kd logit loss: {logit_loss.item():.8f}\t"
@@ -140,7 +142,7 @@ class Trainer:
 
         torch.cuda.empty_cache()
 
-        return train_loss, train_results
+        return train_loss, train_results, step_lr
 
 
     @classmethod

@@ -152,7 +152,7 @@ def parse_args():
         "--lr_scheduler_type",
         type=str,
         help="The scheduler type to use.",
-        choices=["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"],
+        choices=["linear", "linear_with_pruning", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"],
     )
     parser.add_argument("--weight_decay", type=float, default=None, help="Weight decay to use.")
     
@@ -182,7 +182,7 @@ def parse_args():
     
     parser.add_argument("--opts", default=None, nargs='+', help="Modify config options by adding 'KEY VALUE' pairs")
 
-    # Prune arguments
+    # Prune
     parser.add_argument('--pruning', action='store_true', help='whether to prune')
     parser.add_argument('--aug_train', action='store_true')
     parser.add_argument('--pred_distill', action='store_true')
@@ -196,10 +196,12 @@ def parse_args():
     parser.add_argument('--fixed_mask', type=str, help="Fixed mask path.")
     parser.add_argument('--mask', type=str, help="mask path")
 
+    # Kd
     parser.add_argument('--kd_on', action='store_true', help='whether to use knowledge distillation')
     parser.add_argument('--kd_cls_loss', default='soft_ce', help='kd loss for output logits')
     parser.add_argument('--kd_reg_loss', default='mse', help='kd loss for Transformer layers')
     parser.add_argument('--teacher_path', type=str, help='path to eacher state dict')
+    parser.add_argument('--teacher_init', action='store_true', help='use teacher weight to initialize student')
 
     parser.add_argument('--debug', action='store_true', help='whether to debug')
 
@@ -392,7 +394,7 @@ if __name__ == '__main__':
         teacher_config = DebertaConfig.from_dict(teacher_config_dict)
         teacher = DebertaForSequenceClassification(teacher_config)
         teacher.load_state_dict(teacher_model_dict)
-
+        
         # Pay attention to set the teacher to eval model
         teacher.eval()
 
@@ -403,6 +405,17 @@ if __name__ == '__main__':
                     f"Output logit loss: {kd_logit_loss.__name__}\n"
                     f"Transformer layer loss: {kd_layer_loss.__name__}\n"
                     f"[Teacher Config]\n{teacher.config}\n")
+        
+        # Let student has the same initial weight as teacher's
+        if cfg.TRAIN.KD.TEACHER_INIT:
+            del model
+
+            model_config_dict, model_dict = teacher_config_dict, teacher_model_dict
+            model_config = DebertaConfig.from_dict(model_config_dict)
+            model = DebertaForSequenceClassification(model_config)
+            model.load_state_dict(model_dict)
+
+            logger.info("\n => Note: use teacher's weight to initialize student.\n")
 
     '''vii. Preprocess dataset then feed in dataloader'''
     s = time.time()
@@ -598,6 +611,7 @@ if __name__ == '__main__':
     accelerator.wait_for_everyone()
 
     # We'll plot these items when training finished
+    all_step_lr = []
     val_epoch_loss, val_epoch_metric = [], []
     train_epoch_loss, train_epoch_metric = [], []
 
@@ -613,10 +627,11 @@ if __name__ == '__main__':
 
         # Eval
         accelerator.wait_for_everyone()
-        val_loss, val_results = Trainer.val(
+        val_loss, val_results, step_lr = Trainer.val(
             accelerator, model, val_dataloader, cfg, logger, 
             epoch, metric_computor, is_regression
         )
+        all_step_lr.extend(step_lr)
         val_epoch_loss.append(val_loss)
 
         if cfg.TRAIN.KD.ON:
@@ -624,6 +639,16 @@ if __name__ == '__main__':
                 accelerator, teacher, val_dataloader, cfg, logger, 
                 epoch, metric_computor, is_regression, teacher_mode=True
             )
+        
+        if epoch > cfg.TRAIN.START_EPOCH and not epoch % cfg.SAVE_FREQ:
+            if accelerator.is_local_main_process and not cfg.DEBUG:
+                unwrap_model = accelerator.unwrap_model(model)
+                epoch_checkpoint = save_checkpoint(
+                    log_dir, unwrap_model,
+                    accelerator.unwrap_model(optimizer), lr_scheduler,
+                    epoch, unwrap_model.config, val_results
+                )
+                logger.info(f"\n=> Epoch checkpoint '{epoch_checkpoint}' saved\n")
 
         if cfg.DATA.TASK_NAME.lower() in ('mnli', 'qnli', 'rte', 'sst-2', 'wnli'):
             val_epoch_metric.append(val_results['accuracy'])
@@ -641,8 +666,8 @@ if __name__ == '__main__':
                     best_checkpoint = save_checkpoint(
                         best_checkpoint_dir, unwrap_model, 
                         accelerator.unwrap_model(optimizer), lr_scheduler, 
-                        epoch, unwrap_model.config, 
-                        best_val_results, tokenizer=tokenizer, accelerator=accelerator
+                        epoch, unwrap_model.config, best_val_results, 
+                        tokenizer=tokenizer, accelerator=accelerator, best=True
                     )
                     logger.info(f"\n=> Best checkpoint '{best_checkpoint}' saved\n")
             else:
@@ -666,12 +691,6 @@ if __name__ == '__main__':
     total = time.time() - begin
     total_str = str(datetime.timedelta(seconds=total))
     logger.info(f"=> Training finished! time used: {total_str}\n")
-
-    '''Plot training items'''
-    plot_dir = os.path.join(log_dir, 'view')
-    epoch_range = range(cfg.TRAIN.START_EPOCH + 1, cfg.TRAIN.EPOCHS + 1)
-    plot_line(epoch_range, train_epoch_loss, x_val=epoch_range, y_val=val_epoch_loss, out_dir=plot_dir, name='loss')
-    plot_line(epoch_range, train_epoch_metric, x_val=epoch_range, y_val=val_epoch_metric, item='Acc', out_dir=plot_dir, name='acc')
 
     # Save the last checkpoint
     # Only main process will save checkpoint
@@ -702,6 +721,16 @@ if __name__ == '__main__':
     # Note: this is for EF scheduler, it is required
     logger.info("Success")
 
+    '''Plot training items'''
+    plot_dir = os.path.join(log_dir, 'view')
+
+    epoch_range = range(cfg.TRAIN.START_EPOCH + 1, cfg.TRAIN.EPOCHS + 1)
+    plot_line(epoch_range, train_epoch_loss, x_val=epoch_range, y_val=val_epoch_loss, out_dir=plot_dir, name='loss')
+    plot_line(epoch_range, train_epoch_metric, x_val=epoch_range, y_val=val_epoch_metric, item='Acc', out_dir=plot_dir, name='acc')
+    
+    step_range = range((cfg.TRAIN.EPOCHS - cfg.TRAIN.START_EPOCH) * len(train_dataloader))
+    plot_line(step_range, all_step_lr, out_dir=plot_dir, item='Lr', name='lr')
+    
     # Release all references to the internal objects stored and call the garbage collector
     accelerator.free_memory()
     if accelerator.distributed_type == DistributedType.MULTI_GPU:

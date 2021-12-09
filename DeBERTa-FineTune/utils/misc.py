@@ -44,7 +44,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, config, logger):
 
 
 def save_checkpoint(checkpoint_dir, model, optimizer, lr_scheduler, 
-                    epoch, model_config, results, tokenizer=None, accelerator=None):
+                    epoch, model_config, results, tokenizer=None, accelerator=None, best=False):
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     # epoch_dir = os.path.join(checkpoint_dir, f'epoch{epoch}')
@@ -70,10 +70,14 @@ def save_checkpoint(checkpoint_dir, model, optimizer, lr_scheduler,
                   'model_config': model_config_dict,
                   'metric': results}
 
-    # Delete previous checkpoints
-    for prev in glob.glob(os.path.join(checkpoint_dir, '*.pth')):
-        os.remove(prev)
-    checkpoint = os.path.join(checkpoint_dir, f'epoch{epoch}.pth')
+    if best:
+        # Delete previous checkpoints
+        for prev in glob.glob(os.path.join(checkpoint_dir, '*.pth')):
+            os.remove(prev)
+
+    # TODO: make this more general
+    metric = results.get('accuracy', 0.)
+    checkpoint = os.path.join(checkpoint_dir, f'epoch{epoch}-acc{metric:.2f}.pth')
     torch.save(save_state, checkpoint)
     
     return checkpoint

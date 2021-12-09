@@ -591,7 +591,6 @@ class DisentangledSelfAttention(nn.Module):
         config (:obj:`str`):
             A model config class instance with the configuration to build a new model. The schema is similar to
             `BertConfig`, for more details, please refer :class:`~transformers.DebertaConfig`
-
     """
 
     def __init__(self, config):
@@ -1079,7 +1078,7 @@ class DebertaModel(DebertaPreTrainedModel):
         self.embeddings = DebertaEmbeddings(config)
         self.encoder = DebertaEncoder(config)
         # 用于在 Encoder 输出后，利用最后一层输出的隐层状态作为 query，倒数第二层输出 作为 key 和 value，
-        # 然后继续用最后一层 Transformer layer 去编码， 每次输出的状态都作为新的 query 与原本倒数第二层的隐层状态去编码
+        # 然后继续用最后一层 Transformer layer 去编码，每次输出的状态都作为新的 query 与原本倒数第二层的隐层状态去编码
         self.z_steps = 0
         self.config = config
 
@@ -1268,6 +1267,7 @@ class DebertaForMaskedLM(DebertaPreTrainedModel):
         masked_lm_loss = None
         if labels is not None:
             loss_fct = CrossEntropyLoss()  # -100 index = padding token
+            # Pytorch 的 CE loss 中，默认忽略的 label index 就是-100，通过 'ignore_index' 参数指定
             masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
 
         if not return_dict:
@@ -1286,17 +1286,21 @@ class DebertaForMaskedLM(DebertaPreTrainedModel):
 class DebertaPredictionHeadTransform(nn.Module):
     def __init__(self, config):
         super().__init__()
+
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+
         if isinstance(config.hidden_act, str):
             self.transform_act_fn = ACT2FN[config.hidden_act]
         else:
             self.transform_act_fn = config.hidden_act
+
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
     def forward(self, hidden_states):
         hidden_states = self.dense(hidden_states)
         hidden_states = self.transform_act_fn(hidden_states)
         hidden_states = self.LayerNorm(hidden_states)
+
         return hidden_states
 
 
@@ -1312,12 +1316,14 @@ class DebertaLMPredictionHead(nn.Module):
 
         self.bias = nn.Parameter(torch.zeros(config.vocab_size))
 
+        # TODO: what do this mean?
         # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
         self.decoder.bias = self.bias
 
     def forward(self, hidden_states):
         hidden_states = self.transform(hidden_states)
         hidden_states = self.decoder(hidden_states)
+
         return hidden_states
 
 
