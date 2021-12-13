@@ -112,7 +112,7 @@ _C.TRAIN.KD = CN()
 # Whether to use kd
 _C.TRAIN.KD.ON = False
 # Decide from which Transformer layer we will kd
-_C.TRAIN.KD.BEGIN_LAYER = -2
+_C.TRAIN.KD.BEGIN_LAYER = 0
 # Kd for logit loss
 _C.TRAIN.KD.CLS_LOSS = None
 # Kd for Transformer layer loss

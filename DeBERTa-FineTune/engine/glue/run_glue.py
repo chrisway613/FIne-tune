@@ -486,8 +486,6 @@ if __name__ == '__main__':
         cfg.TRAIN.LR *= scaled
         cfg.TRAIN.MIN_LR *= scaled
         cfg.TRAIN.WARMUP_LR *= scaled
-        # TODO: test this by resulting
-        # cfg.TRAIN.WARMUP_STEPS = int(cfg.TRAIN.WARMUP_STEPS / scaled)
 
         cfg.freeze()
     optimizer = build_optimizer(model, cfg)
@@ -555,8 +553,10 @@ if __name__ == '__main__':
                     and ('attention' not in name):
                     prune_dict[name] = cfg.PRUNE.SPARSITY
                 # Attention
-                if 'attention.self.in_proj.weight' in name or 'attention.self.pos_proj.weight' in name \
-                    or 'attention.self.pos_q_proj.weight' in name or 'attention.output.dense.weight' in name:
+                # TODO: whether to prune all kind of attentions(i.e. pos_proj, pos_q_proj)
+                # if 'attention.self.in_proj.weight' in name or 'attention.self.pos_proj.weight' in name \
+                #     or 'attention.self.pos_q_proj.weight' in name or 'attention.output.dense.weight' in name:
+                if 'attention.self.in_proj.weight' in name or 'attention.output.dense.weight' in name:
                     prune_dict[name] = cfg.PRUNE.SPARSITY
             else:
                 pass
@@ -618,20 +618,20 @@ if __name__ == '__main__':
     # 'accumulate_steps' for early stopping
     begin, accumulate_steps = time.time(), 0
     for epoch in range(cfg.TRAIN.START_EPOCH, cfg.TRAIN.EPOCHS):
-        train_loss, train_resutls = Trainer.train(
+        train_loss, train_resutls, step_lr = Trainer.train(
             accelerator, model, train_dataloader, optimizer, lr_scheduler, 
             metric_computor, cfg, logger, epoch, progress_bar, is_regression=is_regression,
             pruner=pruner, teacher=teacher, kd_cls_loss=kd_logit_loss, kd_reg_loss=kd_layer_loss
         )
+        all_step_lr.extend(step_lr)
         train_epoch_loss.append(train_loss)
 
         # Eval
         accelerator.wait_for_everyone()
-        val_loss, val_results, step_lr = Trainer.val(
+        val_loss, val_results = Trainer.val(
             accelerator, model, val_dataloader, cfg, logger, 
             epoch, metric_computor, is_regression
         )
-        all_step_lr.extend(step_lr)
         val_epoch_loss.append(val_loss)
 
         if cfg.TRAIN.KD.ON:
@@ -699,7 +699,7 @@ if __name__ == '__main__':
         checkpoint = save_checkpoint(
             log_dir, unwrap_model, 
             accelerator.unwrap_model(optimizer), lr_scheduler, epoch, 
-            unwrap_model.config, best_val_results,
+            unwrap_model.config, val_results,
             tokenizer=tokenizer, accelerator=accelerator
         )
         logger.info(f"=>Final checkpoint '{checkpoint}' saved\n")
