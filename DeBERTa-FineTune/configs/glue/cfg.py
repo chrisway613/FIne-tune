@@ -158,7 +158,7 @@ _C.PRUNE.GROUP_SIZE = 64
 _C.PRUNE.FREQUENCY = 100
 _C.PRUNE.FIXED_MASK = None
 _C.PRUNE.MASK = None
-_C.PRUNE.SPARSE_STEPS = None
+_C.PRUNE.SPARSE_STEPS = 0
 
 # -------------------------------------------------------------------------
 
@@ -280,7 +280,7 @@ def update_config_by_args(config: CN, args):
     # Pruner settings
     if args.pruning:
         config.PRUNE.PRUNING = args.pruning
-    if args.prune_sparsity:
+    if args.prune_sparsity is not None:
         config.PRUNE.SPARSITY = args.prune_sparsity
     if args.prune_deploy_device:
         config.PRUNE.DEPLOY_DEVICE = args.prune_deploy_device
@@ -292,7 +292,7 @@ def update_config_by_args(config: CN, args):
         config.PRUNE.FIXED_MASK = args.fixed_mask
     if args.mask:
         config.PRUNE.MASK = args.mask
-    if args.sparse_steps:
+    if args.sparse_steps is not None:
         config.PRUNE.SPARSE_STEPS = args.sparse_steps
     
     if args.kd_on:

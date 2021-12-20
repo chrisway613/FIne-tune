@@ -10,7 +10,7 @@ from transformers.trainer_utils import SchedulerType
 from transformers.optimization import TYPE_TO_SCHEDULER_FUNCTION as _type_to_scheduler_func
 
 
-def get_linear_schedule_with_pruning(optimizer, num_sparse_steps, num_training_steps, num_warmup_steps=0, last_epoch=-1, min_lr=0.):
+def get_constant_linear_schedule_with_warmup(optimizer, num_sparse_steps, num_training_steps, num_warmup_steps=0, last_epoch=-1, min_factor=0.):
     """
     Create a schedule with a learning rate that decreases linearly from the initial lr set in the optimizer to 0, after
     a warmup period during which it increases linearly from 0 to the initial lr set in the optimizer.
@@ -24,6 +24,8 @@ def get_linear_schedule_with_pruning(optimizer, num_sparse_steps, num_training_s
             The total number of training steps.
         last_epoch (:obj:`int`, `optional`, defaults to -1):
             The index of the last epoch when resuming training.
+        min_factor (:obj:`int`):
+            The minimun multiplicative factor value.
 
     Return:
         :obj:`torch.optim.lr_scheduler.LambdaLR` with the appropriate schedule.
@@ -36,7 +38,7 @@ def get_linear_schedule_with_pruning(optimizer, num_sparse_steps, num_training_s
             return 1.
         else:
             return max(
-                min_lr, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_sparse_steps))
+                min_factor, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_sparse_steps))
             )
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
@@ -44,9 +46,9 @@ def get_linear_schedule_with_pruning(optimizer, num_sparse_steps, num_training_s
 
 # Note: must do deepcopy(instead copy) in case of modifying the original
 TYPE_TO_SCHEDULER_FUNCTION = deepcopy(_type_to_scheduler_func)
-TYPE_TO_SCHEDULER_FUNCTION.update(linear_with_pruning=get_linear_schedule_with_pruning)
+TYPE_TO_SCHEDULER_FUNCTION.update(constant_linear=get_constant_linear_schedule_with_warmup)
 
-ENUM_SHEDULER_TYPE = ('linear_with_pruning',)
+ENUM_SHEDULER_TYPE = ('constant_linear',)
 
 
 def build_lr_scheduler(optimizer, config, step_per_epoch):
@@ -62,9 +64,10 @@ def build_lr_scheduler(optimizer, config, step_per_epoch):
     kwargs = {}
     if scheduler_name == 'cosine_with_restarts':
         kwargs['num_cycles'] = config.TRAIN.LR_SCHEDULER.NUM_CYCLES
-    if scheduler_name == 'linear_with_pruning':
-        kwargs['num_sparse_steps'] = config.PRUNE.SPARSE_STEPS
-        kwargs['min_lr'] = config.TRAIN.MIN_LR
+    if scheduler_name == 'constant_linear':
+        kwargs['num_sparse_steps'] = config.PRUNE.SPARSE_STEPS or train_steps
+        # TODO: verify this
+        # kwargs['min_factor'] = 2e-3
 
     return get_scheduler(
         scheduler_name,

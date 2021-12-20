@@ -152,7 +152,7 @@ def parse_args():
         "--lr_scheduler_type",
         type=str,
         help="The scheduler type to use.",
-        choices=["linear", "linear_with_pruning", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"],
+        choices=["linear", "constant_linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"],
     )
     parser.add_argument("--weight_decay", type=float, default=None, help="Weight decay to use.")
     

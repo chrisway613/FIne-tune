@@ -51,6 +51,7 @@ class Trainer:
                     zip(attns[config.TRAIN.KD.BEGIN_LAYER:], teacher_attns[config.TRAIN.KD.BEGIN_LAYER:]):
                     attn_loss = attn_loss + kd_reg_loss(layer_attn, teacher_layer_attn)
                 
+                # TODO: verify this weighted loss
                 loss_raw = logit_loss + hs_loss + attn_loss
             else:
                 outputs = model(**batch)
