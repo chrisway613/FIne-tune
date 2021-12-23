@@ -67,7 +67,7 @@ def build_lr_scheduler(optimizer, config, step_per_epoch):
     if scheduler_name == 'constant_linear':
         kwargs['num_sparse_steps'] = config.PRUNE.SPARSE_STEPS or train_steps
         # TODO: verify this
-        # kwargs['min_factor'] = 2e-3
+        # kwargs['min_factor'] = 0.25
 
     return get_scheduler(
         scheduler_name,
