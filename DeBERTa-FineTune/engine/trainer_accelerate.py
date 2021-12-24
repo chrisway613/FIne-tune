@@ -52,8 +52,8 @@ class Trainer:
                     attn_loss = attn_loss + kd_reg_loss(layer_attn, teacher_layer_attn)
                 
                 # TODO: verify this weighted loss
-                loss_raw = 2 * logit_loss + hs_loss + attn_loss
-                # loss_raw = logit_loss + hs_loss + attn_loss
+                # loss_raw = 2 * logit_loss + hs_loss + attn_loss
+                loss_raw = logit_loss + hs_loss + attn_loss
             else:
                 outputs = model(**batch)
                 loss_raw = outputs.loss
