@@ -1,1 +1,4 @@
 aug_dense_84.38.pth filter=lfs diff=lfs merge=lfs -text
+/home/user/weicai/Fine-tune/DeBERTa-FineTune/engine/glue/outputs/rte/deberta-base-mnli/ep6-lr5e-07-dense-aug/12-07-17-32/best_checkpoint/epoch1-84.38acc.pth filter=lfs diff=lfs merge=lfs -text
+/home/user/weicai/Fine-tune/DeBERTa-FineTune/engine/glue/outputs/rte/deberta-base-mnli/ep6-lr1e-06-dense-aug/12-07-14-08/best_checkpoint/epoch1-84.14acc.pth filter=lfs diff=lfs merge=lfs -text
+/home/user/weicai/Fine-tune/DeBERTa-FineTune/engine/glue/outputs/rte/deberta-base-mnli/ep50-lr3e-05-pruneTrue-pfreq400-psteps180800-sparsity0.9375/12-26-10-48/epoch44-acc0.81.pth filter=lfs diff=lfs merge=lfs -text
