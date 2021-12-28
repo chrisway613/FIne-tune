@@ -248,7 +248,7 @@ def update_config_by_args(config: CN, args):
 
     if args.epochs:
         config.TRAIN.EPOCHS = args.epochs
-    if args.warmup_steps:
+    if args.warmup_steps is not None:
         config.TRAIN.WARMUP_STEPS = args.warmup_steps
     if args.early_stop:
         config.TRAIN.EARLY_STOP = args.early_stop

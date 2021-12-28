@@ -20,6 +20,7 @@
 """
 
 import os
+import math
 import time
 import random
 import argparse
@@ -510,24 +511,21 @@ if __name__ == '__main__':
                         'pearson': 0., 'spearmanr': 0., 'matthews_correlation': 0.}
 
     if cfg.TRAIN.AUTO_RESUME:
-        resume_file = auto_resume_helper(cfg.OUTPUT)
-        if resume_file:
-            if cfg.MODEL.RESUME:
-                logger.warning(
-                    f"=> Auto-resume changing resume file from '{cfg.MODEL.RESUME}' to '{resume_file}'"
-                )
-
-            cfg.defrost()
-            cfg.MODEL.RESUME = resume_file
-            cfg.freeze()
-
-            logger.info(f"=> Auto resuming from '{resume_file}'..")
+        # resume_file = auto_resume_helper(cfg.MODEL.RESUME)
+        if cfg.MODEL.RESUME is not None:
+            logger.info(f"=> Auto resuming from '{cfg.MODEL.RESUME}'..\t")
             # Dict: metric type -> metric value
             best_val_results = load_checkpoint(
                 accelerator.unwrap_model(model), accelerator.unwrap_model(optimizer), 
                 lr_scheduler, cfg, logger
             )
-            logger.info(f"=> Auto resume done!\n")
+            num_train_steps = (cfg.TRAIN.EPOCHS - cfg.TRAIN.START_EPOCH) * \
+                math.ceil(len(train_dataloader) / cfg.TRAIN.GRADIENT_ACCUMULATION_STEPS)
+            logger.info(
+                f"Done!\n"
+                f"[Start Epoch]:{cfg.TRAIN.START_EPOCH}\t"
+                f"[Lr]:{optimizer.param_groups[0]['lr']}\t[Metric]:{best_val_results}\n"
+            )
         else:
             logger.warning(f"=> No checkpoint found in '{cfg.OUTPUT}', ignoring auto resume\n")
     
@@ -537,7 +535,7 @@ if __name__ == '__main__':
     logger.info("***** Start Training *****")
     logger.info(f"  Num train examples(all devices) = {len(train_data)}")
     logger.info(f"  Num val examples(all devices) = {len(val_data)}")
-    logger.info(f"  Num epochs = {cfg.TRAIN.EPOCHS}")
+    logger.info(f"  Num epochs = {cfg.TRAIN.EPOCHS - cfg.TRAIN.START_EPOCH}")
     logger.info(f"  Num train steps = {num_train_steps}")
     logger.info(f"  Train batch size per device = {cfg.DATA.TRAIN_BATCH_SIZE}")
     logger.info(f"  Gradient Accumulation steps = {cfg.TRAIN.GRADIENT_ACCUMULATION_STEPS}")

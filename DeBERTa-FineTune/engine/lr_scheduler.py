@@ -51,7 +51,7 @@ TYPE_TO_SCHEDULER_FUNCTION.update(constant_linear=get_constant_linear_schedule_w
 ENUM_SHEDULER_TYPE = ('constant_linear',)
 
 
-def build_lr_scheduler(optimizer, config, step_per_epoch):
+def build_lr_scheduler(optimizer, config, step_per_epoch, last_epoch=-1):
     # "linear", "linear_with_pruning", 
     # "cosine", "cosine_with_restarts",
     # "polynomial", 
@@ -74,6 +74,7 @@ def build_lr_scheduler(optimizer, config, step_per_epoch):
         optimizer=optimizer,
         num_warmup_steps=config.TRAIN.WARMUP_STEPS,
         num_training_steps=train_steps,
+        last_epoch=last_epoch,
         **kwargs
     ), train_steps
 
@@ -83,6 +84,7 @@ def get_scheduler(
     optimizer: Optimizer,
     num_warmup_steps: Optional[int] = None,
     num_training_steps: Optional[int] = None,
+    last_epoch=-1,
     **kwargs
 ):
     """
@@ -113,10 +115,13 @@ def get_scheduler(
         raise ValueError(f"{name} requires `num_warmup_steps`, please provide that argument.")
 
     if name == SchedulerType.CONSTANT_WITH_WARMUP:
-        return schedule_func(optimizer, num_warmup_steps=num_warmup_steps)
+        return schedule_func(optimizer, num_warmup_steps=num_warmup_steps, last_epoch=last_epoch)
 
     # All other schedulers require `num_training_steps`
     if num_training_steps is None:
         raise ValueError(f"{name} requires `num_training_steps`, please provide that argument.")
 
-    return schedule_func(optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps, **kwargs)
+    return schedule_func(
+        optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps, 
+        last_epoch=last_epoch, **kwargs
+    )

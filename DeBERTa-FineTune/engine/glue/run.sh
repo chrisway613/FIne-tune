@@ -5,13 +5,14 @@ TASK=rte
 MODEL=deberta-base-mnli
 
 # Train
-EPOCHS=60
+EPOCHS=50
 VAL_BS=8
 TRAIN_BS=8
 WARMUP_STEPS=400
+RESUME=outputs/rte/deberta-base-mnli/ep50-lr3e-05-pruneTrue-pfreq400-psteps180800-sparsity0.9375/12-26-10-48/epoch44-acc0.81.pth
 
 # Optimization
-LR=1.5e-5
+LR=3e-5
 OPTIMIZER=adamw
 SCHEDULER=constant_linear
 WEIGHT_DECAY=1e-2
@@ -26,7 +27,6 @@ SPARSE_STEPS=180800
 PRUNE_DEPLOY_DEVICE=none
 
 # Kd
-TEACHER_INIT=true
 TEACHER=/home/user/weicai/Fine-tune/DeBERTa-FineTune/engine/glue/aug_dense_84.38.pth
 
 # Log
@@ -42,6 +42,6 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 OMP_NUM_THREADS=1 TOKENIZERS_PARALLELISM=true MPLBA
   --cls_dropout 0.2 --weight_decay $WEIGHT_DECAY \
   --pruning --prune_frequency $PRUNE_FREQ \
   --sparse_steps $SPARSE_STEPS --prune_deploy_device $PRUNE_DEPLOY_DEVICE \
-  --kd_on --teacher_path $TEACHER --teacher_init $TEACHER_INIT >> $NOHUP_OUTPUT 2>&1 &
+  --kd_on --teacher_path $TEACHER  >> $NOHUP_OUTPUT 2>&1 &
 
 echo $NOHUP_OUTPUT
