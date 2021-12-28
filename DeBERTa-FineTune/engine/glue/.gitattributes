@@ -1,2 +1,1 @@
 aug_dense_84.38.pth filter=lfs diff=lfs merge=lfs -text
-/home/user/weicai/Fine-tune/DeBERTa-FineTune/engine/glue/outputs/rte/deberta-base-mnli/ep6-lr5e-07-dense-aug/12-07-17-32/best_checkpoint/epoch1-84.38acc.pth filter=lfs diff=lfs merge=lfs -text
