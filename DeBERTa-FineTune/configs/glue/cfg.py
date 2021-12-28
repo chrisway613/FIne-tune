@@ -23,7 +23,7 @@ _C.DATA = CN()
 _C.DATA.DATASET = 'glue'
 # ["cola", "mnli", "mrpc", "qnli", "qqp", "rte", "sst2", "stsb", "wnli"]
 _C.DATA.TASK_NAME = None
-_C.DATA.LOAD_FROM_CACHE = True
+_C.DATA.LOAD_FROM_CACHE = False
 # csv or json
 _C.DATA.TRAIN_FILE = None
 # csv or json

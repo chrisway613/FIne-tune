@@ -576,24 +576,6 @@ if __name__ == '__main__':
             fixed_mask=cfg.PRUNE.FIXED_MASK,
             mask=cfg.PRUNE.MASK
         )
-        
-        # pruner = Prune(
-        #     model,
-        #     group_size=64,
-        #     topk=8,
-        #     pvalue_initial=1,
-        #     pvalue_final=3,
-        #     pvalue_update_freq=5,
-        #     budget_initial=.25,
-        #     budget_final=.25,
-        #     budget_update_freq=50,
-        #     pvalue_warmup_steps=num_train_steps,
-        #     budget_multiplier=.25,
-        #     warmup_budget_update_freq=5,
-        #     mask_update_freq=5,
-        #     num_steps=num_train_steps,
-        #     log_path=log_dir
-        # )
     else:
         pruner = None
 
@@ -640,7 +622,8 @@ if __name__ == '__main__':
                 epoch, metric_computor, is_regression, teacher_mode=True
             )
         
-        if epoch > cfg.TRAIN.START_EPOCH and not epoch % cfg.SAVE_FREQ:
+        # TODO: only save checkpoint after pruning
+        if epoch >= int((cfg.TRAIN.START_EPOCH + cfg.TRAIN.EPOCHS) * 0.8) - 1 and not epoch % cfg.SAVE_FREQ:
             if accelerator.is_local_main_process and not cfg.DEBUG:
                 unwrap_model = accelerator.unwrap_model(model)
                 epoch_checkpoint = save_checkpoint(
@@ -658,11 +641,10 @@ if __name__ == '__main__':
             if val_results['accuracy'] > best_val_results['accuracy']:
                 # Reset accumulate bad performance step
                 accumulate_steps = 0
-
+                best_val_results['accuracy'] = val_results['accuracy']
                 # Only main process will save checkpoint
                 if accelerator.is_local_main_process and not cfg.DEBUG:
                     unwrap_model = accelerator.unwrap_model(model)
-                    best_val_results['accuracy'] = val_results['accuracy']
                     best_checkpoint = save_checkpoint(
                         best_checkpoint_dir, unwrap_model, 
                         accelerator.unwrap_model(optimizer), lr_scheduler, 
