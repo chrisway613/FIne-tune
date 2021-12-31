@@ -42,6 +42,6 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 OMP_NUM_THREADS=1 TOKENIZERS_PARALLELISM=true MPLBA
   --cls_dropout 0.2 --weight_decay $WEIGHT_DECAY \
   --pruning --prune_frequency $PRUNE_FREQ \
   --sparse_steps $SPARSE_STEPS --prune_deploy_device $PRUNE_DEPLOY_DEVICE \
-  --kd_on --teacher_path $TEACHER  >> $NOHUP_OUTPUT 2>&1 &
+  --kd_on --teacher_init --teacher_path $TEACHER  >> $NOHUP_OUTPUT 2>&1 &
 
 echo $NOHUP_OUTPUT

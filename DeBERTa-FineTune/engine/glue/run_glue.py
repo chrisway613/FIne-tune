@@ -621,7 +621,7 @@ if __name__ == '__main__':
             )
         
         # TODO: only save checkpoint after pruning
-        if epoch >= int((cfg.TRAIN.START_EPOCH + cfg.TRAIN.EPOCHS) * 0.8) - 1 and not epoch % cfg.SAVE_FREQ:
+        if (epoch - cfg.TRAIN.START_EPOCH) / cfg.TRAIN.EPOCHS >= 0.75 and not epoch % cfg.SAVE_FREQ:
             if accelerator.is_local_main_process and not cfg.DEBUG:
                 unwrap_model = accelerator.unwrap_model(model)
                 epoch_checkpoint = save_checkpoint(
