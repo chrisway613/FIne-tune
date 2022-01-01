@@ -23,7 +23,7 @@ _C.DATA = CN()
 _C.DATA.DATASET = 'glue'
 # ["cola", "mnli", "mrpc", "qnli", "qqp", "rte", "sst2", "stsb", "wnli"]
 _C.DATA.TASK_NAME = None
-_C.DATA.LOAD_FROM_CACHE = True
+_C.DATA.LOAD_FROM_CACHE = False
 # csv or json
 _C.DATA.TRAIN_FILE = None
 # csv or json
@@ -81,7 +81,17 @@ _C.TRAIN.AUTO_RESUME = False
 
 # LR scheduler
 _C.TRAIN.LR_SCHEDULER = CN()
+'''
+"linear"
+"cosine"
+"cosine_with_restarts"
+"polynomial"
+"constant"
+"constant_with_warmup"
+'''
 _C.TRAIN.LR_SCHEDULER.TYPE = 'linear'
+# The number of hard restarts, for 'cosine_with_restarts' scheduler
+_C.TRAIN.LR_SCHEDULER.NUM_CYCLES = 3
 # Epoch interval to decay LR, used in StepLRScheduler
 _C.TRAIN.LR_SCHEDULER.DECAY_EPOCHS = 1
 # LR decay rate, used in StepLRScheduler
@@ -89,24 +99,27 @@ _C.TRAIN.LR_SCHEDULER.DECAY_RATE = 0.1
 
 # Optimizer
 _C.TRAIN.OPTIMIZER = CN()
-_C.TRAIN.OPTIMIZER.NAME = 'Adam'
+_C.TRAIN.OPTIMIZER.NAME = 'AdamW'
 # Optimizer Epsilon
 _C.TRAIN.OPTIMIZER.EPS = 1e-6
 # Optimizer Betas
 _C.TRAIN.OPTIMIZER.BETAS = (0.9, 0.999)
+_C.TRAIN.OPTIMIZER.CHILD_TUNING_ADAMW_MODE = 'F'
+_C.TRAIN.OPTIMIZER.CHILD_TUNING_ADAMW_RESERVE_P = .3
 
 # Knowledge distillation
 _C.TRAIN.KD = CN()
 # Whether to use kd
 _C.TRAIN.KD.ON = False
 # Decide from which Transformer layer we will kd
-_C.TRAIN.KD.BEGIN_LAYER = -2
+_C.TRAIN.KD.BEGIN_LAYER = 0
 # Kd for logit loss
 _C.TRAIN.KD.CLS_LOSS = None
 # Kd for Transformer layer loss
 _C.TRAIN.KD.REG_LOSS = None
 # Teacher state dict
 _C.TRAIN.KD.TEACHER_PATH = None
+_C.TRAIN.KD.TEACHER_INIT = False
 
 # -----------------------------------------------------------------------------
 # Testing settings
@@ -145,6 +158,7 @@ _C.PRUNE.GROUP_SIZE = 64
 _C.PRUNE.FREQUENCY = 100
 _C.PRUNE.FIXED_MASK = None
 _C.PRUNE.MASK = None
+_C.PRUNE.SPARSE_STEPS = 0
 
 # -------------------------------------------------------------------------
 
@@ -217,7 +231,10 @@ def update_config_by_args(config: CN, args):
         config.TRAIN.LR = args.lr
     if args.linear_scaled_lr:
         config.TRAIN.LINEAR_SCALED_LR = args.linear_scaled_lr
-    
+    if args.optimizer:
+        config.TRAIN.OPTIMIZER.NAME = args.optimizer
+        if args.optimizer == 'child_tuning_adamw' and args.child_tuning_adamw_mode:
+            config.TRAIN.OPTIMIZER.CHILD_TUNING_ADAMW_MODE = args.child_tuning_adamw_mode
     if args.lr_scheduler_type:
         config.TRAIN.LR_SCHEDULER.TYPE = args.lr_scheduler_type
 
@@ -231,7 +248,7 @@ def update_config_by_args(config: CN, args):
 
     if args.epochs:
         config.TRAIN.EPOCHS = args.epochs
-    if args.warmup_steps:
+    if args.warmup_steps is not None:
         config.TRAIN.WARMUP_STEPS = args.warmup_steps
     if args.early_stop:
         config.TRAIN.EARLY_STOP = args.early_stop
@@ -263,8 +280,8 @@ def update_config_by_args(config: CN, args):
     # Pruner settings
     if args.pruning:
         config.PRUNE.PRUNING = args.pruning
-    if args.prune_sparsity:
-        config.PRUNE.SPARSITY = args.sparsity
+    if args.prune_sparsity is not None:
+        config.PRUNE.SPARSITY = args.prune_sparsity
     if args.prune_deploy_device:
         config.PRUNE.DEPLOY_DEVICE = args.prune_deploy_device
     if args.prune_group_size:
@@ -275,6 +292,8 @@ def update_config_by_args(config: CN, args):
         config.PRUNE.FIXED_MASK = args.fixed_mask
     if args.mask:
         config.PRUNE.MASK = args.mask
+    if args.sparse_steps is not None:
+        config.PRUNE.SPARSE_STEPS = args.sparse_steps
     
     if args.kd_on:
         config.TRAIN.KD.ON = args.kd_on
@@ -284,6 +303,8 @@ def update_config_by_args(config: CN, args):
             config.TRAIN.KD.REG_LOSS = args.kd_reg_loss
         if args.teacher_path:
             config.TRAIN.KD.TEACHER_PATH = args.teacher_path
+        if args.teacher_init:
+            config.TRAIN.KD.TEACHER_INIT = args.teacher_init
 
     if args.debug:
         config.DEBUG = True

@@ -1,4 +1,5 @@
 import os
+import glob
 import torch
 
 from typing import List
@@ -43,20 +44,20 @@ def load_checkpoint(model, optimizer, lr_scheduler, config, logger):
 
 
 def save_checkpoint(checkpoint_dir, model, optimizer, lr_scheduler, 
-                    epoch, model_config, results, tokenizer=None, accelerator=None):
+                    epoch, model_config, results, tokenizer=None, accelerator=None, best=False):
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    epoch_dir = os.path.join(checkpoint_dir, f'epoch{epoch}')
-    os.makedirs(epoch_dir, exist_ok=True)
+    # epoch_dir = os.path.join(checkpoint_dir, f'epoch{epoch}')
+    # os.makedirs(epoch_dir, exist_ok=True)
     
     # Done by Transformers API, this will save 'config.json' & 'pytorch_model.bin' below directory
-    if accelerator is None:
-        model.save_pretrained(epoch_dir)
-    else:
-        model.save_pretrained(epoch_dir, save_function=accelerator.save)
+    # if accelerator is None:
+    #     model.save_pretrained(epoch_dir)
+    # else:
+    #     model.save_pretrained(epoch_dir, save_function=accelerator.save)
 
-    if tokenizer is not None:
-        tokenizer.save_pretrained(epoch_dir)
+    # if tokenizer is not None:
+    #     tokenizer.save_pretrained(epoch_dir)
 
     model_config_dict = model_config.to_dict()
     if getattr(model_config, 'num_labels', None) is not None:
@@ -69,7 +70,14 @@ def save_checkpoint(checkpoint_dir, model, optimizer, lr_scheduler,
                   'model_config': model_config_dict,
                   'metric': results}
 
-    checkpoint = os.path.join(checkpoint_dir, f'epoch{epoch}.pth')
+    if best:
+        # Delete previous checkpoints
+        for prev in glob.glob(os.path.join(checkpoint_dir, '*.pth')):
+            os.remove(prev)
+
+    # TODO: make this more general
+    metric = results.get('accuracy', 0.)
+    checkpoint = os.path.join(checkpoint_dir, f'epoch{epoch}-acc{metric:.2f}.pth')
     torch.save(save_state, checkpoint)
     
     return checkpoint
