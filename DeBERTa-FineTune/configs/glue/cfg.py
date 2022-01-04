@@ -62,7 +62,7 @@ _C.MODEL.NO_DECAY_KEYWORDS = ("LayerNorm.weight", "bias")
 _C.TRAIN = CN()
 _C.TRAIN.EPOCHS = 6
 _C.TRAIN.START_EPOCH = 0
-_C.TRAIN.WARMUP_STEPS = 50
+_C.TRAIN.WARMUP_STEPS = 100
 _C.TRAIN.WEIGHT_DECAY = 1e-2
 _C.TRAIN.EARLY_STOP = False
 _C.TRAIN.MAX_EARLY_STOP_EPOCHS = 20
@@ -83,6 +83,7 @@ _C.TRAIN.AUTO_RESUME = False
 _C.TRAIN.LR_SCHEDULER = CN()
 '''
 "linear"
+"constant_linear"
 "cosine"
 "cosine_with_restarts"
 "polynomial"
@@ -114,12 +115,12 @@ _C.TRAIN.KD.ON = False
 # Decide from which Transformer layer we will kd
 _C.TRAIN.KD.BEGIN_LAYER = 0
 # Kd for logit loss
-_C.TRAIN.KD.CLS_LOSS = None
+_C.TRAIN.KD.CLS_LOSS = 'soft_ce'
 # Kd for Transformer layer loss
-_C.TRAIN.KD.REG_LOSS = None
+_C.TRAIN.KD.REG_LOSS = 'mse'
 # Teacher state dict
 _C.TRAIN.KD.TEACHER_PATH = None
-_C.TRAIN.KD.TEACHER_INIT = False
+_C.TRAIN.KD.TEACHER_INIT = True
 
 # -----------------------------------------------------------------------------
 # Testing settings
@@ -132,7 +133,7 @@ _C.TEST = CN()
 # Tag of experiment, overwritten by command line argument
 _C.TAG = 'GLUE'
 # Fixed random seed
-_C.SEED = 0
+_C.SEED = 42
 # Whether to debug
 _C.DEBUG = False
 # Path to output folder, overwritten by command line argument

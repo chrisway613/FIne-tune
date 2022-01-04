@@ -502,11 +502,11 @@ if __name__ == '__main__':
     if teacher is not None:
         teacher = accelerator.prepare_model(teacher)
 
-    # Note: this 'num_train_steps' considers gradient accumulation
-    # this is the frequency that lr scheduler updates
-    lr_scheduler, num_train_steps = build_lr_scheduler(optimizer, cfg, len(train_dataloader))
+    # This is the frequency that lr scheduler updates
+    lr_scheduler, num_update_steps = build_lr_scheduler(optimizer, cfg, len(train_dataloader))
 
     '''ix. Training preparation'''
+    best_avg = 0.
     best_val_results = {'accuracy': 0., 'f1': 0., 
                         'pearson': 0., 'spearmanr': 0., 'matthews_correlation': 0.}
 
@@ -519,7 +519,7 @@ if __name__ == '__main__':
                 accelerator.unwrap_model(model), accelerator.unwrap_model(optimizer), 
                 lr_scheduler, cfg, logger
             )
-            num_train_steps = (cfg.TRAIN.EPOCHS - cfg.TRAIN.START_EPOCH) * \
+            num_update_steps = (cfg.TRAIN.EPOCHS - cfg.TRAIN.START_EPOCH) * \
                 math.ceil(len(train_dataloader) / cfg.TRAIN.GRADIENT_ACCUMULATION_STEPS)
             logger.info(
                 f"Done!\n"
@@ -531,12 +531,17 @@ if __name__ == '__main__':
     
     # Log config & training information
     logger.info(f"\n[Config]\n{cfg.dump()}\n")
+
+    num_epochs = cfg.TRAIN.EPOCHS - cfg.TRAIN.START_EPOCH
+    num_train_steps = num_epochs * len(train_dataloader)
     total_batch_size = cfg.DATA.TRAIN_BATCH_SIZE * accelerator.num_processes * cfg.TRAIN.GRADIENT_ACCUMULATION_STEPS
+    
     logger.info("***** Start Training *****")
     logger.info(f"  Num train examples(all devices) = {len(train_data)}")
     logger.info(f"  Num val examples(all devices) = {len(val_data)}")
-    logger.info(f"  Num epochs = {cfg.TRAIN.EPOCHS - cfg.TRAIN.START_EPOCH}")
+    logger.info(f"  Num epochs = {num_epochs}")
     logger.info(f"  Num train steps = {num_train_steps}")
+    logger.info(f"  Num update steps = {num_update_steps}")
     logger.info(f"  Train batch size per device = {cfg.DATA.TRAIN_BATCH_SIZE}")
     logger.info(f"  Gradient Accumulation steps = {cfg.TRAIN.GRADIENT_ACCUMULATION_STEPS}")
     logger.info(f"  Total train batch size (batch size per device x num devices x gradient accumulation steps) = {total_batch_size}\n")
@@ -620,8 +625,10 @@ if __name__ == '__main__':
                 epoch, metric_computor, is_regression, teacher_mode=True
             )
         
-        # TODO: only save checkpoint after pruning
-        if (epoch - cfg.TRAIN.START_EPOCH) / cfg.TRAIN.EPOCHS >= 0.75 and not epoch % cfg.SAVE_FREQ:
+        cur = epoch - cfg.TRAIN.START_EPOCH + 1
+        # Only save checkpoint after pruning
+        # if 0.75 * cfg.TRAIN.EPOCHS <= cur < cfg.EPOCHS and not cur % cfg.SAVE_FREQ:
+        if not cur % cfg.SAVE_FREQ and cur < cfg.TRAIN.EPOCHS:
             if accelerator.is_local_main_process and not cfg.DEBUG:
                 unwrap_model = accelerator.unwrap_model(model)
                 epoch_checkpoint = save_checkpoint(
@@ -631,37 +638,64 @@ if __name__ == '__main__':
                 )
                 logger.info(f"\n=> Epoch checkpoint '{epoch_checkpoint}' saved\n")
 
-        if cfg.DATA.TASK_NAME.lower() in ('mnli', 'qnli', 'rte', 'sst-2', 'wnli'):
-            val_epoch_metric.append(val_results['accuracy'])
-            train_epoch_metric.append(train_resutls['accuracy'])
+        # if cfg.DATA.TASK_NAME.lower() in ('mnli', 'qnli', 'rte', 'sst-2', 'wnli'):
+        #     val_epoch_metric.append(val_results['accuracy'])
+        #     train_epoch_metric.append(train_resutls['accuracy'])
 
-            # Save the checkpoint which improved the performance
-            if val_results['accuracy'] > best_val_results['accuracy']:
-                # Reset accumulate bad performance step
-                accumulate_steps = 0
-                best_val_results['accuracy'] = val_results['accuracy']
-                # Only main process will save checkpoint
-                if accelerator.is_local_main_process and not cfg.DEBUG:
-                    unwrap_model = accelerator.unwrap_model(model)
-                    best_checkpoint = save_checkpoint(
-                        best_checkpoint_dir, unwrap_model, 
-                        accelerator.unwrap_model(optimizer), lr_scheduler, 
-                        epoch, unwrap_model.config, best_val_results, 
-                        tokenizer=tokenizer, accelerator=accelerator, best=True
-                    )
-                    logger.info(f"\n=> Best checkpoint '{best_checkpoint}' saved\n")
-            else:
-                # Count bad performance step
-                accumulate_steps += 1
+        #     # Save the checkpoint which improved the performance
+        #     if val_results['accuracy'] > best_val_results['accuracy']:
+        #         # Reset accumulate bad performance step
+        #         accumulate_steps = 0
+        #         best_val_results['accuracy'] = val_results['accuracy']
+        #         # Only main process will save checkpoint
+        #         if accelerator.is_local_main_process and not cfg.DEBUG:
+        #             unwrap_model = accelerator.unwrap_model(model)
+        #             best_checkpoint = save_checkpoint(
+        #                 best_checkpoint_dir, unwrap_model, 
+        #                 accelerator.unwrap_model(optimizer), lr_scheduler, 
+        #                 epoch, unwrap_model.config, best_val_results, 
+        #                 tokenizer=tokenizer, accelerator=accelerator, best=True
+        #             )
+        #             logger.info(f"\n=> Best checkpoint '{best_checkpoint}' saved\n")
+        #     else:
+        #         # Count bad performance step
+        #         accumulate_steps += 1
             
-            if cfg.TRAIN.KD.ON:
-                logger.info(
-                    f"\n[Epoch{epoch}] Gap between teacher & student:\n"
-                    f"\tAcc: {teacher_val_results['accuracy'] - val_results['accuracy']}\n"
-                )
-        else:
-            pass
+        #     if cfg.TRAIN.KD.ON:
+        #         logger.info(
+        #             f"\n[Epoch{epoch}] Gap between teacher & student:\n"
+        #             f"\tAcc: {teacher_val_results['accuracy'] - val_results['accuracy']}\n"
+        #         )
+        # else:
+        #     pass
         
+        val_epoch_metric.append(val_results)
+        train_epoch_metric.append(train_resutls)
+
+        cur_avg = sum(val_results.values()) / len(val_results)
+        if cur_avg > best_avg:
+            best_avg = cur_avg
+            for k, v in val_results.items():
+                best_val_results[k] = max(best_val_results[k], v)
+
+            # Only main process will save checkpoint
+            best_saved = {k: best_val_results[k] for k in val_results.keys()}
+            if accelerator.is_local_main_process and not cfg.DEBUG:
+                unwrap_model = accelerator.unwrap_model(model)
+                best_checkpoint = save_checkpoint(
+                    best_checkpoint_dir, unwrap_model, 
+                    accelerator.unwrap_model(optimizer), lr_scheduler, 
+                    epoch, unwrap_model.config, best_saved, 
+                    tokenizer=tokenizer, accelerator=accelerator, best=True
+                )
+                logger.info(f"\n=> Best checkpoint '{best_checkpoint}' saved\n")
+
+            # Reset accumulate bad performance step
+            accumulate_steps = 0
+        else:
+            # Count bad performance step
+            accumulate_steps += 1
+
         # Early stop
         if cfg.TRAIN.EARLY_STOP and accumulate_steps > cfg.TRAIN.MAX_EARLY_STOP_EPOCHS:
             logger.info(f"\n=> Early stopping.. "
@@ -706,10 +740,14 @@ if __name__ == '__main__':
 
     epoch_range = range(cfg.TRAIN.START_EPOCH + 1, cfg.TRAIN.EPOCHS + 1)
     plot_line(epoch_range, train_epoch_loss, x_val=epoch_range, y_val=val_epoch_loss, out_dir=plot_dir, name='loss')
-    plot_line(epoch_range, train_epoch_metric, x_val=epoch_range, y_val=val_epoch_metric, item='Acc', out_dir=plot_dir, name='acc')
+    
+    for metric_name in val_epoch_metric[0].keys():
+        train_metric_values = [train_metric_dict[metric_name] for train_metric_dict in train_epoch_metric]
+        val_metric_values = [val_metric_dict[metric_name] for val_metric_dict in val_epoch_metric]
+        plot_line(epoch_range, train_metric_values, x_val=epoch_range, y_val=val_metric_values, item=metric_name, out_dir=plot_dir, name=metric_name)
     
     step_range = range((cfg.TRAIN.EPOCHS - cfg.TRAIN.START_EPOCH) * len(train_dataloader))
-    plot_line(step_range, all_step_lr, out_dir=plot_dir, item='Lr', name='lr')
+    plot_line(step_range, all_step_lr, out_dir=plot_dir, item='lr', name='lr')
     
     # Release all references to the internal objects stored and call the garbage collector
     accelerator.free_memory()

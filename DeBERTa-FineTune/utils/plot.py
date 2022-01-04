@@ -2,7 +2,7 @@ import os
 import matplotlib.pyplot as plt
 
 
-def plot_line(x_train, y_train, x_val=None, y_val=None, item='Loss', out_dir=None, name='plot'):
+def plot_line(x_train, y_train, x_val=None, y_val=None, item='loss', out_dir=None, name='plot'):
     """
     plot loss or metric curve line, output to the specified directory.
     Args:

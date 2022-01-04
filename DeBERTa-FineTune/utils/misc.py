@@ -75,9 +75,10 @@ def save_checkpoint(checkpoint_dir, model, optimizer, lr_scheduler,
         for prev in glob.glob(os.path.join(checkpoint_dir, '*.pth')):
             os.remove(prev)
 
-    # TODO: make this more general
-    metric = results.get('accuracy', 0.)
-    checkpoint = os.path.join(checkpoint_dir, f'epoch{epoch}-acc{metric:.2f}.pth')
+    # metric = results.get('accuracy', 0.)
+    avg_tag = f'-avg{(sum(results.values()) / len(results)):.3f}-' if len(results) > 1 else '-' 
+    metric_tag = '-'.join([f"{k}{v:.3f}" for k, v in results.items()])
+    checkpoint = os.path.join(checkpoint_dir, f'epoch{epoch}{avg_tag}{metric_tag}.pth')
     torch.save(save_state, checkpoint)
     
     return checkpoint
