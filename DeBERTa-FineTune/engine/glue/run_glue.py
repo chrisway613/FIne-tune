@@ -637,37 +637,6 @@ if __name__ == '__main__':
                     epoch, unwrap_model.config, val_results
                 )
                 logger.info(f"\n=> Epoch checkpoint '{epoch_checkpoint}' saved\n")
-
-        # if cfg.DATA.TASK_NAME.lower() in ('mnli', 'qnli', 'rte', 'sst-2', 'wnli'):
-        #     val_epoch_metric.append(val_results['accuracy'])
-        #     train_epoch_metric.append(train_resutls['accuracy'])
-
-        #     # Save the checkpoint which improved the performance
-        #     if val_results['accuracy'] > best_val_results['accuracy']:
-        #         # Reset accumulate bad performance step
-        #         accumulate_steps = 0
-        #         best_val_results['accuracy'] = val_results['accuracy']
-        #         # Only main process will save checkpoint
-        #         if accelerator.is_local_main_process and not cfg.DEBUG:
-        #             unwrap_model = accelerator.unwrap_model(model)
-        #             best_checkpoint = save_checkpoint(
-        #                 best_checkpoint_dir, unwrap_model, 
-        #                 accelerator.unwrap_model(optimizer), lr_scheduler, 
-        #                 epoch, unwrap_model.config, best_val_results, 
-        #                 tokenizer=tokenizer, accelerator=accelerator, best=True
-        #             )
-        #             logger.info(f"\n=> Best checkpoint '{best_checkpoint}' saved\n")
-        #     else:
-        #         # Count bad performance step
-        #         accumulate_steps += 1
-            
-        #     if cfg.TRAIN.KD.ON:
-        #         logger.info(
-        #             f"\n[Epoch{epoch}] Gap between teacher & student:\n"
-        #             f"\tAcc: {teacher_val_results['accuracy'] - val_results['accuracy']}\n"
-        #         )
-        # else:
-        #     pass
         
         val_epoch_metric.append(val_results)
         train_epoch_metric.append(train_resutls)
