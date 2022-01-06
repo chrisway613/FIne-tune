@@ -41,6 +41,7 @@ def load_data(name="glue", task_name=None, train_file=None, val_file=None):
 
         is_regression = task_name == "stsb"
         if is_regression:
+            label_list = []
             num_labels = 1
         else:
             label_list = data["train"].features["label"].names
@@ -49,6 +50,7 @@ def load_data(name="glue", task_name=None, train_file=None, val_file=None):
         # Trying to have good defaults here, don't hesitate to tweak to your needs.
         is_regression = data["train"].features["label"].dtype in ["float32", "float64"]
         if is_regression:
+            label_list = []
             num_labels = 1
         else:
             try:
